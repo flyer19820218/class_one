@@ -2,38 +2,23 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import requests
 import os
 from matplotlib import font_manager
 
 st.set_page_config(page_title="班級成績查詢系統", layout="centered", page_icon="🎓")
 
 # ==========================================
-# 區塊 1: 字體與環境初始化
+# 區塊 1: 本地字體初始化 (極簡版)
 # ==========================================
 FONT_NAME = "NotoSansTC-Regular.ttf"
-FONT_URL = "https://cdn.jsdelivr.net/gh/themoeway/noto-sans-tc-ttf@master/ttf/NotoSansTC-Regular.ttf"
 
-@st.cache_resource
-def init_fonts():
-    if not os.path.exists(FONT_NAME):
-        try:
-            with st.spinner("首次啟動，正在下載字體..."):
-                response = requests.get(FONT_URL, headers={'User-Agent': 'Mozilla/5.0'}, timeout=60)
-                with open(FONT_NAME, "wb") as f:
-                    f.write(response.content)
-        except Exception as e:
-            return False
-    try:
-        font_manager.fontManager.addfont(FONT_NAME)
-        dynamic_font_name = font_manager.FontProperties(fname=FONT_NAME).get_name()
-        plt.rcParams['font.sans-serif'] = [dynamic_font_name, 'Microsoft JhengHei', 'Arial']
-        plt.rcParams['axes.unicode_minus'] = False
-        return True
-    except:
-        return False
-
-HAS_FONT = init_fonts()
+if os.path.exists(FONT_NAME):
+    font_manager.fontManager.addfont(FONT_NAME)
+    dynamic_font_name = font_manager.FontProperties(fname=FONT_NAME).get_name()
+    plt.rcParams['font.sans-serif'] = [dynamic_font_name, 'Microsoft JhengHei', 'Arial']
+    plt.rcParams['axes.unicode_minus'] = False
+else:
+    st.warning("⚠️ 找不到字體檔！雷達圖的中文可能會變成方塊。請確認 NotoSansTC-Regular.ttf 與 app.py 放在同一個資料夾。")
 
 def get_google_sheet_csv_url(url):
     try:
@@ -88,7 +73,6 @@ def draw_web_radar_chart(labels, pr_scores):
 # ==========================================
 st.title("🏫 班級成績查詢系統")
 
-# 【優化重點】加入模式切換器，預設為單次查詢，方便直接測試！
 mode = st.radio("⚙️ 選擇系統模式：", ["單次段考查詢 (快速測試版)", "總目錄主控表 (多期段考正式版)"])
 
 target_sheet_url = None
@@ -102,7 +86,7 @@ if mode == "總目錄主控表 (多期段考正式版)":
             if df_menu is None:
                 st.error("❌ 無法讀取總目錄，請確認網址與權限。")
             elif '考試名稱' not in df_menu.columns:
-                st.error("❌ 找不到「考試名稱」欄位！請確認您貼上的是總目錄，而不是單次段考成績單。")
+                st.error("❌ 找不到「考試名稱」欄位！請確認您貼上的是總目錄。")
             else:
                 exam_options = df_menu['考試名稱'].dropna().tolist()
                 selected_exam = st.selectbox("📅 請選擇考試項目：", exam_options)
@@ -110,14 +94,13 @@ if mode == "總目錄主控表 (多期段考正式版)":
         except Exception as e:
             st.error(f"❌ 總目錄讀取失敗：{e}")
 else:
-    # 預設帶入您的公版網址供快速測試
-    target_sheet_url = st.text_input("🔗 請輸入「單次段考成績單」網址：", value="https://docs.google.com/spreadsheets/d/1lp0F45BnLO0Hn2l47vJ7orawr0KfIaT_/edit#gid=1366647975")
+    # 把預設網址拿掉，讓老師自己貼！
+    target_sheet_url = st.text_input("🔗 請輸入「單次段考成績單」網址：", placeholder="https://docs.google.com/spreadsheets/d/...")
 
 if target_sheet_url:
     try:
         raw_df = load_data(target_sheet_url)
         if raw_df is not None:
-            # 分離學生與統計列
             raw_df['_is_student'] = pd.to_numeric(raw_df['座號'], errors='coerce').notna()
             df_students = raw_df[raw_df['_is_student']].copy()
             df_students['座號'] = df_students['座號'].astype(int)
@@ -125,7 +108,6 @@ if target_sheet_url:
             
             df_bottom = raw_df[~raw_df['_is_student']].copy()
             
-            # 提取高標與平均
             stats_dict = {}
             cols_to_extract = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
             for _, row in df_bottom.iterrows():
@@ -141,7 +123,6 @@ if target_sheet_url:
                             if c not in stats_dict: stats_dict[c] = {}
                             stats_dict[c]['平均'] = pd.to_numeric(row[c], errors='coerce')
             
-            # 全自動科目偵測
             available_subjects = [c for c in cols_to_extract if c in raw_df.columns]
             has_7_subjects = all(c in available_subjects for c in ['歷史', '地理', '公民'])
             
@@ -152,7 +133,6 @@ if target_sheet_url:
                 display_subs = ['國文', '英文', '數學', '自然', '社會']
                 radar_subs = ['國文', '英文', '數學', '自然', '社會']
             
-            # 安全轉換總分與名次 (防呆機制：過濾掉空值或非數字字元)
             if '總分' not in df_students.columns:
                 if has_7_subjects:
                     df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
@@ -177,7 +157,6 @@ if target_sheet_url:
             else:
                 df_students['名次'] = df_students['總分'].rank(ascending=False, method='min')
             
-            # 計算各科個人 PR 值
             for sub in radar_subs:
                 if sub in df_students.columns:
                     df_students[sub] = pd.to_numeric(df_students[sub], errors='coerce').fillna(0)
@@ -185,7 +164,6 @@ if target_sheet_url:
             
             df_students = df_students.sort_values(by='座號').reset_index(drop=True)
             
-            # 學生座號選單
             student_seats = sorted(df_students['座號'].tolist())
             selected_seat = st.selectbox("🔢 請選擇您的座號：", student_seats)
             
