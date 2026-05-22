@@ -42,6 +42,11 @@ def load_data(url):
         return df
     except: return None
 
+def check_is_grade_2_or_3(exam_name):
+    if any(keyword in str(exam_name) for keyword in ["二上", "二下", "三上", "三下"]):
+        return True
+    return False
+
 # ==========================================
 # 區塊 2: 雷達圖產生器 (單次段考專用)
 # ==========================================
@@ -73,13 +78,13 @@ def draw_web_radar_chart(labels, pr_scores):
     return fig
 
 # ==========================================
-# 區塊 3: 歷史跨考試數據撈取引擎
+# 區塊 3: 歷史跨考試數據撈取引擎 (已改為全面 PR 化)
 # ==========================================
 def fetch_student_history(df_menu, seat_num):
     history_records = []
     
     for _, row in df_menu.iterrows():
-        exam_name = str(row['考試名稱']).strip()
+        exam_name = str(row['考試檔案名稱或別名'] if '考試檔案名稱或別名' in df_menu.columns else row['考試名稱']).strip()
         file_url = str(row['該次成績單的 Google 試算表網址']).strip()
         
         df_exam = load_data(file_url)
@@ -88,29 +93,44 @@ def fetch_student_history(df_menu, seat_num):
             df_stud = df_exam[df_exam['_is_student']].copy()
             df_stud['座號'] = df_stud['座號'].astype(int)
             
+            is_grade_2_3 = check_is_grade_2_or_3(exam_name)
+            
+            # 清理與轉換全班數據型態
+            for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
+                if col not in df_stud.columns: df_stud[col] = 0
+                df_stud[col] = pd.to_numeric(df_stud[col], errors='coerce').fillna(0)
+            
+            # 處理跨年級社會領域融合
+            if is_grade_2_3:
+                df_stud['社會_融合'] = (df_stud['歷史'] + df_stud['地理'] + df_stud['公民']) / 3
+            else:
+                df_stud['社會_融合'] = df_stud['社會']
+            
+            # 全自動動態計算全班各學科在該次考試的 PR 值
+            for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
+                df_stud[f'{sub}_PR'] = df_stud[sub].rank(pct=True) * 100
+            
+            # 自動推算總分與名次
+            if '總分' not in df_stud.columns:
+                df_stud['總分'] = df_stud['國文'] + df_stud['英文'] + df_stud['數學'] + df_stud['自然'] + df_stud['社會_融合']
+            df_stud['總分'] = pd.to_numeric(df_stud['總分'], errors='coerce').fillna(0)
+            
+            if '名次' not in df_stud.columns:
+                df_stud['名次'] = df_stud['總分'].rank(ascending=False, method='min')
+            
+            # 擷取目標學生的數據
             match = df_stud[df_stud['座號'] == seat_num]
             if not match.empty:
                 s_row = match.iloc[0]
-                g_num = lambda col: pd.to_numeric(s_row.get(col, 0), errors='coerce') if pd.notna(s_row.get(col, 0)) else 0
-                
-                chinese = g_num('國文')
-                english = g_num('英文')
-                math = g_num('數學')
-                science = g_num('自然')
-                
-                # 一二年級銜接：若有分科考則融合成社會領域平均，若無則直取社會分數
-                if '歷史' in df_exam.columns and '地理' in df_exam.columns and '公民' in df_exam.columns:
-                    social = (g_num('歷史') + g_num('地理') + g_num('公民')) / 3
-                else:
-                    social = g_num('社會')
-                    
-                rank = g_num('名次')
-                total_score = g_num('總分')
-                
                 history_records.append({
                     "考試名稱": exam_name,
-                    "國文": chinese, "英文": english, "數學": math, "自然": science, "社會(含領域融合)": social,
-                    "總分": total_score, "名次": rank
+                    "國文": s_row['國文_PR'],
+                    "英文": s_row['英文_PR'],
+                    "數學": s_row['數學_PR'],
+                    "自然": s_row['自然_PR'],
+                    "社會(含領域融合)": s_row['社會_融合_PR'],
+                    "總分": pd.to_numeric(s_row.get('總分', 0)),
+                    "名次": pd.to_numeric(s_row.get('名次', 0))
                 })
                 
     return pd.DataFrame(history_records)
@@ -120,35 +140,33 @@ def fetch_student_history(df_menu, seat_num):
 # ==========================================
 st.title("🎓 801 專屬成績大數據主控台")
 
-col_mode, col_grade = st.columns(2)
-with col_mode:
-    mode = st.radio("⚙️ 系統模式：", ["單次段考查詢", "總目錄主控表"])
-with col_grade:
-    grade_option = st.radio(
-        "📊 選擇學生年級：",
-        ["一年級 (五科版：國英數自社)", "二/三年級 (七科版：含史地公)"],
-        index=1
-    )
+mode = st.radio("⚙️ 系統模式：", ["總目錄主控表", "單次段考查詢 (不建議，無法使用歷史趨勢)"])
 
-has_7_subjects = (grade_option == "二/三年級 (七科版：含史地公)")
-
-# 固定綁定老師的專屬總表網址
+# 固定鎖定您的個人總表網址
 MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAijJICjHzPxJLcPIEngF0wko8/edit?gid=0#gid=0"
 
 df_menu = load_data(MASTER_MENU_URL)
 
 if df_menu is not None:
-    df_menu.columns = df_menu.columns.str.strip()
-    exam_options = df_menu['考試名稱'].dropna().tolist()
+    # 相容欄位名稱
+    if '考試檔案名稱或別名' in df_menu.columns:
+        exam_options = df_menu['考試檔案名稱或別名'].dropna().tolist()
+    else:
+        exam_options = df_menu['考試名稱'].dropna().tolist()
     
     tab1, tab2 = st.tabs(["🔍 學生個人單次查詢", "📈 導師動態趨勢分析後台"])
     
     with tab1:
         if mode == "總目錄主控表":
             selected_exam = st.selectbox("📅 請選擇要查看的考試項目：", exam_options, key="student_exam")
-            target_sheet_url = df_menu[df_menu['考試名稱'] == selected_exam]['該次成績單的 Google 試算表網址'].values[0]
+            if '考試檔案名稱或別名' in df_menu.columns:
+                target_sheet_url = df_menu[df_menu['考試檔案名稱或別名'] == selected_exam]['該次成績單的 Google 試算表網址'].values[0]
+            else:
+                target_sheet_url = df_menu[df_menu['考試名稱'] == selected_exam]['該次成績單的 Google 試算表網址'].values[0]
+            has_7_subjects = check_is_grade_2_or_3(selected_exam)
         else:
             target_sheet_url = st.text_input("🔗 請輸入「單次段考成績單」網址：", placeholder="https://docs.google.com/spreadsheets/d/...")
+            has_7_subjects = True
             
         if target_sheet_url:
             raw_df = load_data(target_sheet_url)
@@ -159,7 +177,6 @@ if df_menu is not None:
                 
                 df_bottom = raw_df[~raw_df['_is_student']].copy()
                 
-                # 提取高標與平均
                 stats_dict = {}
                 cols_to_extract = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
                 for _, row in df_bottom.iterrows():
@@ -175,7 +192,6 @@ if df_menu is not None:
                                 if c not in stats_dict: stats_dict[c] = {}
                                 stats_dict[c]['平均'] = pd.to_numeric(row[c], errors='coerce')
                 
-                # 設定顯示與雷達圖科目
                 if has_7_subjects:
                     display_subs = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
                     radar_subs = ['國文', '英文', '數學', '自然', '歷史', '地理', '公民']
@@ -183,12 +199,9 @@ if df_menu is not None:
                     display_subs = ['國文', '英文', '數學', '自然', '社會']
                     radar_subs = ['國文', '英文', '數學', '自然', '社會']
                 
-                # 強制填補遺漏欄位防呆
                 for col in cols_to_extract:
-                    if col not in df_students.columns:
-                        df_students[col] = 0
+                    if col not in df_students.columns: df_students[col] = 0
                 
-                # 自動算總分與計算單次段考各科 PR 值
                 if '總分' not in df_students.columns:
                     if has_7_subjects:
                         df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
@@ -226,7 +239,6 @@ if df_menu is not None:
                     stud_data = df_students[df_students['座號'] == selected_seat].iloc[0]
                     st.markdown(f"### 👤 座號 {selected_seat} 號 【{stud_data['姓名']}】 的成績報告")
                     
-                    # 經典左右分欄排版再現！
                     col1, col2 = st.columns([1.1, 1.0])
                     
                     with col1:
@@ -253,7 +265,6 @@ if df_menu is not None:
                         st.write(f"📈 **總分 PR 值**：{total_pr:.2f}")
                         
                     with col2:
-                        # 重新把最帥的單場雷達圖畫在右側
                         pr_scores = [stud_data[f'{s}_PR_current'] for s in radar_subs]
                         fig = draw_web_radar_chart(radar_subs, pr_scores)
                         st.pyplot(fig)
@@ -271,22 +282,22 @@ if df_menu is not None:
                     stud_name = df_students[df_students['座號'] == analysis_seat]['姓名'].values[0]
                     st.markdown(f"#### 📈 {analysis_seat} 號 【{stud_name}】 學習軌跡綜合分析")
                     
-                    # 功能 (1)：各科成績總平均和趨勢圖
+                    # 功能 (1)：各科 PR 值趨勢圖 (已全面進化為 PR)
                     fig_score, ax_score = plt.subplots(figsize=(8, 4.5))
                     sub_cols = ["國文", "英文", "數學", "自然", "社會(含領域融合)"]
                     
                     for sub in sub_cols:
-                        ax_score.plot(df_history["考試名稱"], df_history[sub], marker='o', linewidth=2, label=sub)
+                        ax_score.plot(df_history["考試名稱"], df_history[sub], marker='o', linewidth=2, label=f"{sub} PR")
                     
-                    ax_score.set_title("學科成績走勢圖 (一二年級完美串聯版)", fontsize=14, fontweight='bold')
-                    ax_score.set_ylabel("分數", fontsize=12)
+                    ax_score.set_title("各科 PR 值走勢圖 (跨學期真實能力追蹤)", fontsize=14, fontweight='bold')
+                    ax_score.set_ylabel("PR 值 (越大表現越優異)", fontsize=12)
                     ax_score.set_ylim(0, 105)
                     ax_score.grid(True, linestyle=':', alpha=0.6)
                     ax_score.legend(loc='lower left', ncol=5, fontsize=9)
                     plt.xticks(rotation=15)
                     st.pyplot(fig_score)
                     
-                    # 功能 (2)：名次趨勢圖
+                    # 功能 (2)：名次趨勢圖 (曲線往上代表進步)
                     fig_rank, ax_rank = plt.subplots(figsize=(8, 3.5))
                     ax_rank.plot(df_history["考試名稱"], df_history["名次"], marker='s', color='#E67E22', linewidth=2.5, label="班級名次")
                     
@@ -306,6 +317,6 @@ if df_menu is not None:
                 else:
                     st.warning("找不到該位同學的歷史紀錄。")
         else:
-            st.warning("請先在第一頁輸入或載入正確的成績試算表網址。")
+            st.warning("請先在第一頁載入正確的成績資訊。")
 else:
     st.error("❌ 無法載入您的主控總表，請確認網址權限設定。")
