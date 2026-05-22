@@ -193,4 +193,6 @@ if csv_menu_url:
                     st.pyplot(fig)
                     
     except Exception as e:
-        st.error(f
+        st.error(f"❌ 系統讀取錯誤，請確認各段考檔案欄位是否與公版一致。錯誤訊息: {e}")
+else:
+    st.error("❌ 無法載入總目錄，請確認網址權限設定。")
