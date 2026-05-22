@@ -49,7 +49,7 @@ def get_google_sheet_csv_url(url):
     return None
 
 # ==========================================
-# 區塊 2: 網頁雷達圖產生器 (直接渲染在網頁)
+# 區塊 2: 網頁雷達圖產生器
 # ==========================================
 def draw_web_radar_chart(labels, pr_scores):
     num_vars = len(labels)
@@ -156,7 +156,8 @@ if csv_menu_url:
                 # 重新鎖定該生更新後的資料
                 updated_student_df = df_students[df_students['座號'] == selected_seat].iloc[0]
                 
-                st.markdown(### f"👤 座號 {selected_seat} 號 【{updated_student_df['姓名']}】 的成績報告")
+                # 【修正】：將 ### 移到 f-string 字串內部
+                st.markdown(f"### 👤 座號 {selected_seat} 號 【{updated_student_df['姓名']}】 的成績報告")
                 
                 # 建立網頁左右雙欄排版
                 col1, col2 = st.columns([1.1, 1.0])
