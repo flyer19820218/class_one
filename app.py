@@ -45,7 +45,13 @@ def load_data(url):
 # 區塊 2: 網頁雷達圖產生器
 # ==========================================
 def draw_web_radar_chart(labels, pr_scores):
+    # 防呆：確保所有 PR 分數都是有效的數字，避免雷達圖變形
+    pr_scores = [0 if pd.isna(x) else x for x in pr_scores]
+    
     num_vars = len(labels)
+    if num_vars == 0:
+        return plt.figure()
+        
     angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
     plot_scores = list(pr_scores) + [pr_scores[0]]
     angles = angles + [angles[0]]
@@ -73,11 +79,22 @@ def draw_web_radar_chart(labels, pr_scores):
 # ==========================================
 st.title("🏫 班級成績查詢系統")
 
-mode = st.radio("⚙️ 選擇系統模式：", ["單次段考查詢 (快速測試版)", "總目錄主控表 (多期段考正式版)"])
+col_mode, col_grade = st.columns(2)
+with col_mode:
+    mode = st.radio("⚙️ 系統模式：", ["單次段考查詢", "總目錄主控表"])
+with col_grade:
+    # 【聽您的，把年級選擇按鈕加回來了！】
+    grade_option = st.radio(
+        "📊 選擇學生年級：",
+        ["一年級 (五科版：國英數自社)", "二/三年級 (七科版：含史地公)"],
+        index=1
+    )
+
+has_7_subjects = (grade_option == "二/三年級 (七科版：含史地公)")
 
 target_sheet_url = None
 
-if mode == "總目錄主控表 (多期段考正式版)":
+if mode == "總目錄主控表":
     st.info("💡 請確保您的總目錄包含「考試名稱」與「該次成績單的 Google 試算表網址」兩個欄位。")
     MASTER_MENU_URL = st.text_input("🔗 請輸入「總目錄主控表」網址：")
     if MASTER_MENU_URL:
@@ -94,7 +111,6 @@ if mode == "總目錄主控表 (多期段考正式版)":
         except Exception as e:
             st.error(f"❌ 總目錄讀取失敗：{e}")
 else:
-    # 把預設網址拿掉，讓老師自己貼！
     target_sheet_url = st.text_input("🔗 請輸入「單次段考成績單」網址：", placeholder="https://docs.google.com/spreadsheets/d/...")
 
 if target_sheet_url:
@@ -123,9 +139,7 @@ if target_sheet_url:
                             if c not in stats_dict: stats_dict[c] = {}
                             stats_dict[c]['平均'] = pd.to_numeric(row[c], errors='coerce')
             
-            available_subjects = [c for c in cols_to_extract if c in raw_df.columns]
-            has_7_subjects = all(c in available_subjects for c in ['歷史', '地理', '公民'])
-            
+            # 完全依照上方老師選擇的年級，不再亂猜測
             if has_7_subjects:
                 display_subs = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
                 radar_subs = ['國文', '英文', '數學', '自然', '歷史', '地理', '公民']
@@ -133,21 +147,26 @@ if target_sheet_url:
                 display_subs = ['國文', '英文', '數學', '自然', '社會']
                 radar_subs = ['國文', '英文', '數學', '自然', '社會']
             
+            # 強制補齊所有必要欄位（避免試算表缺漏導致閃退）
+            for col in cols_to_extract:
+                if col not in df_students.columns:
+                    df_students[col] = 0
+                    
             if '總分' not in df_students.columns:
                 if has_7_subjects:
                     df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + \
-                                          (pd.to_numeric(df_students.get('歷史', 0), errors='coerce').fillna(0) + \
-                                           pd.to_numeric(df_students.get('地理', 0), errors='coerce').fillna(0) + \
-                                           pd.to_numeric(df_students.get('公民', 0), errors='coerce').fillna(0)) / 3
+                                          (pd.to_numeric(df_students['歷史'], errors='coerce').fillna(0) + \
+                                           pd.to_numeric(df_students['地理'], errors='coerce').fillna(0) + \
+                                           pd.to_numeric(df_students['公民'], errors='coerce').fillna(0)) / 3
                 else:
                     df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + \
                                           pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students.get('社會', 0), errors='coerce').fillna(0)
+                                          pd.to_numeric(df_students['社會'], errors='coerce').fillna(0)
             
             df_students['總分'] = pd.to_numeric(df_students['總分'], errors='coerce').fillna(0)
             df_students['總PR'] = df_students['總分'].rank(pct=True) * 100
@@ -158,9 +177,8 @@ if target_sheet_url:
                 df_students['名次'] = df_students['總分'].rank(ascending=False, method='min')
             
             for sub in radar_subs:
-                if sub in df_students.columns:
-                    df_students[sub] = pd.to_numeric(df_students[sub], errors='coerce').fillna(0)
-                    df_students[f'{sub}_PR'] = df_students[sub].rank(pct=True) * 100
+                df_students[sub] = pd.to_numeric(df_students[sub], errors='coerce').fillna(0)
+                df_students[f'{sub}_PR'] = df_students[sub].rank(pct=True) * 100
             
             df_students = df_students.sort_values(by='座號').reset_index(drop=True)
             
@@ -199,12 +217,10 @@ if target_sheet_url:
                     st.write(f"📈 **總分 PR 值**：{total_pr:.2f}")
                     
                 with col2:
-                    pr_scores = [updated_student_df[f'{s}_PR'] for s in radar_subs if f'{s}_PR' in updated_student_df]
-                    if len(pr_scores) == len(radar_subs):
-                        fig = draw_web_radar_chart(radar_subs, pr_scores)
-                        st.pyplot(fig)
-                    else:
-                        st.warning("⚠️ 科目資料不足，無法繪製雷達圖。")
+                    # 依據年級選項，繪製完美的多邊形雷達圖
+                    pr_scores = [updated_student_df[f'{s}_PR'] for s in radar_subs]
+                    fig = draw_web_radar_chart(radar_subs, pr_scores)
+                    st.pyplot(fig)
                         
     except Exception as e:
         st.error(f"❌ 系統發生預期外的錯誤，請確認欄位是否正確。錯誤資訊: {e}")
