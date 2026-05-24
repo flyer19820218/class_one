@@ -2,53 +2,64 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>801 專屬成績大數據主控台</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+    <title>一班線上成績查詢系統</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: 'PingFang TC', 'Heiti TC', 'Microsoft JhengHei', sans-serif; -webkit-tap-highlight-color: transparent; }
+        /* 封印行動裝置自動放大字體，電腦版不受影響 */
+        html, body {
+            -webkit-text-size-adjust: 100%;
+            text-size-adjust: 100%;
+            font-family: 'PingFang TC', 'Heiti TC', 'Microsoft JhengHei', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        * { max-width: 100%; box-sizing: border-box; }
+        
         .chart-container { position: relative; width: 100%; height: 350px; }
-        @media (max-width: 640px) { .chart-container { height: 280px; } }
+        /* 手機版圖表高度壓縮，電腦版維持 350px */
+        @media (max-width: 640px) { 
+            .chart-container { height: 260px; } 
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
-    <div id="login-section" class="flex items-center justify-center min-h-screen px-4 py-8">
-        <div class="bg-white p-7 sm:p-8 rounded-3xl shadow-xl max-w-sm w-full border border-slate-100 animate-fade-in">
-            <div class="text-center mb-7">
-                <div class="inline-flex items-center justify-center w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl text-2xl mb-4">
+    <div id="login-section" class="flex items-center justify-center min-h-screen px-3 md:px-4 py-6">
+        <div class="bg-white p-6 md:p-8 rounded-3xl shadow-xl max-w-sm w-full border border-slate-100 animate-fade-in">
+            <div class="text-center mb-6 md:mb-7">
+                <div class="inline-flex items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-indigo-50 text-indigo-600 rounded-2xl text-xl md:text-2xl mb-3 md:mb-4">
                     <i class="fa-solid fa-user-lock"></i>
                 </div>
-                <h2 class="text-xl font-black text-slate-900">801 成績主控台</h2>
-                <p class="text-slate-500 text-xs mt-1 px-4 font-medium">使用導師密碼或身份證字號登入</p>
+                <h2 class="text-lg md:text-xl font-black text-slate-900">801 成績主控台</h2>
+                <p class="text-slate-500 text-[11px] md:text-xs mt-1 px-2 font-medium">使用導師密碼或身份證字號登入</p>
             </div>
 
             <div class="space-y-4">
                 <div class="grid grid-cols-3 gap-2">
-                    <label class="flex items-center justify-center py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
+                    <label class="flex items-center justify-center py-2 md:py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
                         <input type="radio" name="role" value="student" checked class="sr-only" onchange="toggleRoleInput()"> 學生
                     </label>
-                    <label class="flex items-center justify-center py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
+                    <label class="flex items-center justify-center py-2 md:py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
                         <input type="radio" name="role" value="parent" class="sr-only" onchange="toggleRoleInput()"> 家長
                     </label>
-                    <label class="flex items-center justify-center py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
+                    <label class="flex items-center justify-center py-2 md:py-2.5 border border-slate-200 rounded-xl cursor-pointer has-[:checked]:bg-indigo-50 has-[:checked]:border-indigo-600 has-[:checked]:text-indigo-700 text-xs font-bold transition">
                         <input type="radio" name="role" value="teacher" class="sr-only" onchange="toggleRoleInput()"> 導師
                     </label>
                 </div>
 
                 <div>
-                    <label id="username-label" class="block text-xs font-bold text-slate-400 mb-1.5 ml-1">座號：</label>
-                    <input type="text" id="username" placeholder="例如：5" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium">
+                    <label id="username-label" class="block text-[11px] md:text-xs font-bold text-slate-400 mb-1 md:mb-1.5 ml-1">座號：</label>
+                    <input type="text" id="username" placeholder="例如：5" class="w-full px-3 py-2.5 md:py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium">
                 </div>
 
                 <div>
-                    <label class="block text-xs font-bold text-slate-400 mb-1.5 ml-1">身份證字號：</label>
-                    <input type="password" id="password" placeholder="請注意大寫字母" class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium">
+                    <label class="block text-[11px] md:text-xs font-bold text-slate-400 mb-1 md:mb-1.5 ml-1">身份證字號：</label>
+                    <input type="password" id="password" placeholder="請注意大寫字母" class="w-full px-3 py-2.5 md:py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium">
                 </div>
 
-                <button onclick="handleLogin()" id="login-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl transition shadow-lg shadow-indigo-600/10 text-sm mt-2 flex items-center justify-center gap-2">
+                <button onclick="handleLogin()" id="login-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 md:py-3.5 rounded-xl transition shadow-lg shadow-indigo-600/10 text-sm mt-1 md:mt-2 flex items-center justify-center gap-2">
                     <span>🚀 登入系統</span>
                 </button>
                 <p id="login-error" class="text-red-500 text-xs text-center hidden font-bold"></p>
@@ -56,88 +67,89 @@
         </div>
     </div>
 
-    <div id="dashboard-section" class="hidden max-w-5xl mx-auto px-3 py-4 sm:px-4 sm:py-6 animate-fade-in">
-        <header class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-3 mb-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-lg shadow-md shadow-indigo-600/20">
+    <div id="dashboard-section" class="hidden max-w-5xl mx-auto px-2 py-3 sm:px-4 sm:py-6 animate-fade-in">
+        <header class="bg-white p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-2 mb-3 md:mb-4">
+            <div class="flex items-center gap-2.5 md:gap-3">
+                <div class="w-9 h-9 md:w-10 md:h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-base md:text-lg shadow-md shadow-indigo-600/20">
                     <i class="fa-solid fa-graduation-cap"></i>
                 </div>
                 <div>
-                    <h1 class="text-base sm:text-lg font-black text-slate-900 leading-tight">801 專屬成績主控台</h1>
-                    <p id="user-badge-text" class="text-slate-400 text-[10px] sm:text-xs font-medium">載入中...</p>
+                    <h1 class="text-sm md:text-lg font-black text-slate-900 leading-tight">801 專屬成績主控台</h1>
+                    <p id="user-badge-text" class="text-slate-400 text-[10px] md:text-xs font-medium">載入中...</p>
                 </div>
             </div>
-            <button onclick="handleLogout()" class="text-slate-300 hover:text-red-500 transition p-2 text-xl">
+            <button onclick="handleLogout()" class="text-slate-300 hover:text-red-500 transition p-1.5 md:p-2 text-lg md:text-xl">
                 <i class="fa-solid fa-right-from-bracket"></i>
             </button>
         </header>
 
-        <div class="flex bg-slate-200/50 p-1 rounded-xl mb-4 gap-1">
-            <button id="tab-btn-1" onclick="switchTab(1)" class="flex-1 py-2.5 rounded-lg font-bold text-xs transition bg-white shadow-sm text-indigo-600">
-                <i class="fa-solid fa-magnifying-glass mr-1.5"></i> 單次成績報告
+        <div class="flex bg-slate-200/50 p-1 rounded-xl mb-3 md:mb-4 gap-1">
+            <button id="tab-btn-1" onclick="switchTab(1)" class="flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition bg-white shadow-sm text-indigo-600">
+                <i class="fa-solid fa-magnifying-glass mr-1 md:mr-1.5"></i> 單次成績報告
             </button>
-            <button id="tab-btn-2" onclick="switchTab(2)" class="flex-1 py-2.5 rounded-lg font-bold text-xs transition text-slate-500">
-                <i class="fa-solid fa-chart-line mr-1.5"></i> 跨學期分析
+            <button id="tab-btn-2" onclick="switchTab(2)" class="flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition text-slate-500">
+                <i class="fa-solid fa-chart-line mr-1 md:mr-1.5"></i> 跨學期分析
             </button>
         </div>
 
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 space-y-3 mb-4">
-            <div id="teacher-seat-picker" class="hidden border-b border-slate-50 pb-3">
-                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 ml-1">🔢 選擇查詢座號：</label>
-                <select id="seat-select" onchange="onFilterChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700"></select>
+        <div class="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 space-y-2 md:space-y-3 mb-3 md:mb-4">
+            <div id="teacher-seat-picker" class="hidden border-b border-slate-50 pb-2 md:pb-3">
+                <label class="block text-[9px] md:text-[10px] font-bold text-slate-400 uppercase mb-1 md:mb-1.5 ml-1">🔢 選擇查詢座號：</label>
+                <select id="seat-select" onchange="onFilterChange()" class="w-full bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-2.5 text-[13px] md:text-sm font-bold text-slate-700"></select>
             </div>
             <div>
-                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1.5 ml-1">📅 選擇考試項目：</label>
-                <select id="exam-select" onchange="onFilterChange()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700"></select>
+                <label class="block text-[9px] md:text-[10px] font-bold text-slate-400 uppercase mb-1 md:mb-1.5 ml-1">📅 選擇考試項目：</label>
+                <select id="exam-select" onchange="onFilterChange()" class="w-full bg-slate-50 border border-slate-200 rounded-lg md:rounded-xl px-3 md:px-4 py-2 md:py-2.5 text-[13px] md:text-sm font-bold text-slate-700"></select>
             </div>
         </div>
 
-        <div id="global-loader" class="text-center py-10 hidden">
-            <div class="inline-block animate-spin rounded-full h-6 w-6 border-4 border-indigo-600 border-t-transparent mb-2"></div>
-            <p class="text-slate-400 text-xs font-medium">大數據分析中...</p>
+        <div id="global-loader" class="text-center py-8 hidden">
+            <div class="inline-block animate-spin rounded-full h-5 w-5 border-4 border-indigo-600 border-t-transparent mb-2"></div>
+            <p class="text-slate-400 text-[11px] font-medium">大數據分析中...</p>
         </div>
 
-        <div id="tab-content-1" class="hidden space-y-4">
-            <div class="grid grid-cols-3 gap-2 sm:gap-4">
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">五科總分</p>
-                    <p id="metric-total-score" class="text-xl sm:text-2xl font-black text-indigo-600">--</p>
+        <div id="tab-content-1" class="hidden space-y-3 md:space-y-4">
+            <div class="grid grid-cols-3 gap-2 md:gap-4">
+                <div class="bg-white py-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[9px] md:text-xs font-bold text-slate-400 mb-0.5 md:mb-1 uppercase tracking-wider">五科總分</p>
+                    <p id="metric-total-score" class="text-lg md:text-2xl font-black text-indigo-600">--</p>
                 </div>
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">班級名次</p>
-                    <p id="metric-rank" class="text-xl sm:text-2xl font-black text-slate-800">--</p>
+                <div class="bg-white py-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[9px] md:text-xs font-bold text-slate-400 mb-0.5 md:mb-1 uppercase tracking-wider">班級名次</p>
+                    <p id="metric-rank" class="text-lg md:text-2xl font-black text-slate-800">--</p>
                 </div>
-                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">總 PR 值</p>
-                    <p id="metric-pr" class="text-xl sm:text-2xl font-black text-emerald-600">--</p>
+                <div class="bg-white py-3 md:p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[9px] md:text-xs font-bold text-slate-400 mb-0.5 md:mb-1 uppercase tracking-wider">總 PR</p>
+                    <p id="metric-pr" class="text-lg md:text-2xl font-black text-emerald-600">--</p>
                 </div>
             </div>
 
-            <div class="flex flex-col lg:flex-row gap-4">
-                <div class="flex-1 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                    <h3 class="text-sm font-bold text-slate-900 mb-4"><i class="fa-solid fa-list-check text-indigo-500 mr-2"></i>成績明細與指標</h3>
-                    <div id="score-details-list" class="space-y-2 text-xs sm:text-sm font-medium text-slate-600">
+            <div class="flex flex-col lg:flex-row gap-3 md:gap-4">
+                <div class="flex-1 bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100">
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-3 md:mb-4"><i class="fa-solid fa-list-check text-indigo-500 mr-1.5 md:mr-2"></i>成績明細與指標</h3>
+                    <div id="score-details-list" class="space-y-1.5 md:space-y-2 text-[11px] md:text-sm font-medium text-slate-600">
                         </div>
                 </div>
-                <div class="flex-1 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
-                    <h3 class="text-sm font-bold text-slate-900 mb-2 self-start"><i class="fa-solid fa-bullseye text-indigo-500 mr-2"></i>能力核心雷達圖</h3>
-                    <div class="w-full max-w-[320px] aspect-square relative">
+                
+                <div class="flex-1 bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                    <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1 md:mb-2 self-start"><i class="fa-solid fa-bullseye text-indigo-500 mr-1.5 md:mr-2"></i>能力核心雷達圖</h3>
+                    <div class="w-full max-w-[260px] md:max-w-[320px] aspect-square relative">
                         <canvas id="radarChart"></canvas>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="tab-content-2" class="hidden space-y-4">
-            <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+        <div id="tab-content-2" class="hidden space-y-3 md:space-y-4">
+            <div class="bg-white p-3.5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-[11px] md:text-sm font-bold text-slate-900 mb-3 md:mb-4 flex items-center gap-1.5 md:gap-2">
                     <i class="fa-solid fa-chart-line text-indigo-500"></i> 全學期各科 PR 值走勢圖
                 </h3>
                 <div class="chart-container"><canvas id="historyPrChart"></canvas></div>
             </div>
-            <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-sm font-bold text-orange-500 mb-4 flex items-center gap-2 uppercase tracking-wider">
-                    <i class="fa-solid fa-arrow-trend-up"></i> 🏆 班級名次晉升軌跡 (曲線往上為進步)
+            <div class="bg-white p-3.5 md:p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-[11px] md:text-sm font-bold text-orange-500 mb-3 md:mb-4 flex items-center gap-1.5 md:gap-2 uppercase tracking-wider">
+                    <i class="fa-solid fa-arrow-trend-up"></i> 🏆 班級名次晉升軌跡
                 </h3>
                 <div class="chart-container"><canvas id="historyRankChart"></canvas></div>
             </div>
@@ -150,7 +162,6 @@
     </style>
 
     <script>
-        // 配置區：填入老師的 Google Apps Script 與 總表網址
         const API_URL = "https://script.google.com/macros/s/AKfycbyEIoXhHnX3S-JQw_CQp4eWFsbPGsKkHFBsCg9xVsW499n2MgXJaHvpiyV9XYtsECzsaA/exec";
         const MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAijJICjHzPxJLcPIEngF0wko8/export?format=csv&gid=0";
 
@@ -191,7 +202,7 @@
                     initDashboard();
                 } else { errorEl.innerText = "❌ " + result.message; errorEl.classList.remove("hidden"); }
             } catch (err) { errorEl.innerText = "❌ 無法連線至驗證伺服器。"; errorEl.classList.remove("hidden"); }
-            finally { btn.disabled = false; btn.innerHTML = `<span>🚀 登入系統</span>`; }
+            finally { btn.disabled = false; btn.innerHTML = `<span>🚀 登入</span>`; }
         }
 
         function handleLogout() { location.reload(); }
@@ -201,12 +212,12 @@
             const t1Content = document.getElementById("tab-content-1"); const t2Content = document.getElementById("tab-content-2");
 
             if (tabNum === 1) {
-                t1Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition bg-white shadow-sm text-indigo-600";
-                t2Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition text-slate-500";
+                t1Btn.className = "flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition bg-white shadow-sm text-indigo-600";
+                t2Btn.className = "flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition text-slate-500";
                 t1Content.classList.remove("hidden"); t2Content.classList.add("hidden");
             } else {
-                t2Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition bg-white shadow-sm text-indigo-600";
-                t1Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition text-slate-500";
+                t2Btn.className = "flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition bg-white shadow-sm text-indigo-600";
+                t1Btn.className = "flex-1 py-2 md:py-2.5 rounded-lg font-bold text-[11px] md:text-xs transition text-slate-500";
                 t2Content.classList.remove("hidden"); t1Content.classList.add("hidden");
                 renderHistoryCharts(); 
             }
@@ -239,7 +250,7 @@
 
         async function initDashboard() {
             document.getElementById("global-loader").classList.remove("hidden");
-            const badgeText = sessionState.role === "teacher" ? "導師主控模式 (yen)" : `801班 座號${sessionState.userId} 成績報告`;
+            const badgeText = sessionState.role === "teacher" ? "導師 (yen)" : `座號 ${sessionState.userId}`;
             document.getElementById("user-badge-text").innerText = badgeText;
 
             try {
@@ -302,14 +313,12 @@
                 const seatVal = parseInt(r['座號']);
                 if (!isNaN(seatVal) && seatVal > 0) students.push(r);
                 else {
-                    // 全面搜索高標與均標
                     const fullRowText = Object.values(r).join(" ");
                     if (fullRowText.includes('高標')) stats['高標'] = r;
                     if (fullRowText.includes('平均') || fullRowText.includes('均標')) stats['平均'] = r;
                 }
             });
 
-            // 動態判斷是否有分科(歷史地理公民) => 有分數代表是二三年級
             let hasSoc3 = students.some(s => parseFloat(s['歷史']) > 0 || parseFloat(s['地理']) > 0 || parseFloat(s['公民']) > 0);
             const isGrade23 = hasSoc3;
 
@@ -354,24 +363,39 @@
             const listEl = document.getElementById("score-details-list"); listEl.innerHTML = "";
             const isGrade23 = examPackage.isGrade23;
             const displaySubs = isGrade23 ? ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民'] : ['國文', '英文', '數學', '自然', '社會'];
+            
             displaySubs.forEach(sub => {
                 const score = student[sub] || 0, avg = parseFloat(examPackage.stats['平均']?.[sub]) || 0, high = parseFloat(examPackage.stats['高標']?.[sub]) || 0;
-                let row = document.createElement("div"); row.className = "flex items-center justify-between py-2 border-b border-slate-100 last:border-0";
+                let row = document.createElement("div"); row.className = "flex items-center justify-between py-1.5 md:py-2 border-b border-slate-100 last:border-0";
                 const prefix = ['歷史', '地理', '公民'].includes(sub) ? "└ " : "";
-                row.innerHTML = `<span>${prefix}${sub}</span><span class="font-mono text-slate-500"><span class="text-indigo-600 font-bold text-base mr-1">${score.toFixed(1)}</span>分 <span class="text-slate-300 mx-1">|</span>均: ${avg.toFixed(1)} <span class="text-slate-300 mx-1">|</span>高: ${high.toFixed(1)}</span>`;
+                
+                // 智慧響應文字大小，電腦版顯示完整字串，手機版顯示緊湊版
+                row.innerHTML = `
+                    <span>${prefix}${sub}</span>
+                    <span class="font-mono text-slate-500">
+                        <span class="text-indigo-600 font-bold text-[13px] md:text-base mr-0.5 md:mr-1">${score.toFixed(1)}</span>
+                        <span class="hidden md:inline">分</span>
+                        <span class="text-slate-300 mx-0.5 md:mx-1">|</span>
+                        <span class="text-[10px] md:text-xs">均:${avg.toFixed(1)}</span>
+                        <span class="text-slate-300 mx-0.5 md:mx-1">|</span>
+                        <span class="text-[10px] md:text-xs">高:${high.toFixed(1)}</span>
+                    </span>`;
                 listEl.appendChild(row);
             });
 
-            // 完美重現 Matplotlib 同心圓雷達圖
             const radarSubs = isGrade23 ? ['國文', '英文', '數學', '自然', '歷史', '地理', '公民'] : ['國文', '英文', '數學', '自然', '社會'];
             const prValues = radarSubs.map(sub => student[`${sub}_PR`] || 0);
+
+            // 判斷是否為手機螢幕，以動態調整雷達圖字體大小
+            const isMobile = window.innerWidth <= 640;
+            const radarFontSize = isMobile ? 10 : 12;
 
             if (charts.radar) charts.radar.destroy();
             const ctx = document.getElementById('radarChart').getContext('2d');
             charts.radar = new Chart(ctx, {
                 type: 'radar',
                 data: {
-                    labels: radarSubs.map(s => `${s}(PR)`),
+                    labels: radarSubs.map(s => `${s}`),
                     datasets: [{
                         label: '個人表現',
                         data: prValues,
@@ -380,16 +404,15 @@
                         borderWidth: 2,
                         pointBackgroundColor: 'rgba(79, 129, 189, 1)',
                         pointBorderColor: '#fff',
-                        pointHoverBackgroundColor: '#fff',
-                        pointHoverBorderColor: 'rgba(79, 129, 189, 1)',
-                        pointRadius: 4, pointHitRadius: 10,
+                        pointRadius: isMobile ? 3 : 4, 
+                        pointHitRadius: 10,
                     }, {
-                        label: 'PR 50 (中位數)',
+                        label: 'PR 50',
                         data: Array(radarSubs.length).fill(50),
                         backgroundColor: 'transparent',
                         borderColor: 'rgba(192, 80, 77, 0.8)', 
                         borderWidth: 1.5,
-                        borderDash: [5, 5],
+                        borderDash: [4, 4],
                         pointRadius: 0, fill: false, 
                     }]
                 },
@@ -398,32 +421,28 @@
                     scales: {
                         r: {
                             min: 0, max: 100,
-                            // 這行就是讓雷達圖變成圓圈的魔法！
                             grid: { circular: true, color: 'rgba(200, 200, 200, 0.5)' },
                             angleLines: { color: 'rgba(200, 200, 200, 0.5)' },
-                            pointLabels: { font: { size: 11, weight: 'bold' }, color: '#333' },
+                            pointLabels: { font: { size: radarFontSize, weight: 'bold' }, color: '#333' },
                             ticks: { display: false, stepSize: 25 },
                         }
                     },
-                    plugins: { legend: { display: false }, tooltip: { cornerRadius: 8 } }
+                    plugins: { legend: { display: false }, tooltip: { cornerRadius: 6 } }
                 }
             });
         }
 
-        // 單一圖表完整歷史軌跡 (防止名稱斷線)
         function renderHistoryCharts() {
             const currentSeat = sessionState.role === "teacher" ? parseInt(document.getElementById("seat-select").value) : sessionState.userId;
-            
             let labels = [], dataSets = { 國文:[], 英文:[], 數學:[], 自然:[], 社會融合:[] }, rankData = [];
 
-            // 按照總表順序一次畫完所有考試，絕對不會接錯！
             cachedMenuData.forEach(item => {
                 const name = item['考試檔案名稱或別名'] || item['考試名稱'];
                 const pkg = allExamsData[name];
                 if (pkg) {
                     const stud = pkg.students.find(s => parseInt(s['座號']) === currentSeat);
                     if (stud) {
-                        labels.push(name);
+                        labels.push(name.replace("年級",""));
                         dataSets.國文.push(stud['國文_PR']); dataSets.英文.push(stud['英文_PR']);
                         dataSets.數學.push(stud['數學_PR']); dataSets.自然.push(stud['自然_PR']);
                         dataSets.社會融合.push(pkg.isGrade23 ? (stud['歷史_PR'] + stud['地理_PR'] + stud['公民_PR'])/3 : stud['社會_PR']);
@@ -432,6 +451,10 @@
                 }
             });
 
+            const isMobile = window.innerWidth <= 640;
+            const chartFontSize = isMobile ? 9 : 11;
+            const pointRad = isMobile ? 3 : 4;
+
             if (charts.historyPr) charts.historyPr.destroy();
             const ctxPr = document.getElementById('historyPrChart').getContext('2d');
             charts.historyPr = new Chart(ctxPr, {
@@ -439,18 +462,18 @@
                 data: {
                     labels: labels,
                     datasets: [
-                        { label: '國文 PR', data: dataSets.國文, borderColor: '#4f81bd' },
-                        { label: '英文 PR', data: dataSets.英文, borderColor: '#c0504d' },
-                        { label: '數學 PR', data: dataSets.數學, borderColor: '#9bbb59' },
-                        { label: '自然 PR', data: dataSets.自然, borderColor: '#8064a2' },
-                        { label: '社會 PR', data: dataSets.社會融合, borderColor: '#4bacc6', borderWidth: 3 }
+                        { label: '國文', data: dataSets.國文, borderColor: '#4f81bd' },
+                        { label: '英文', data: dataSets.英文, borderColor: '#c0504d' },
+                        { label: '數學', data: dataSets.數學, borderColor: '#9bbb59' },
+                        { label: '自然', data: dataSets.自然, borderColor: '#8064a2' },
+                        { label: '社會', data: dataSets.社會融合, borderColor: '#4bacc6', borderWidth: 2.5 }
                     ]
                 },
                 options: { 
                     responsive: true, maintainAspectRatio: false, 
-                    scales: { y: { min: 0, max: 100, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 }, maxRotation: 15 } } },
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
-                    elements: { line: { borderWidth: 2.5, tension: 0.1 }, point: { radius: 4 } }
+                    scales: { y: { min: 0, max: 100, ticks: { font: { size: chartFontSize } } }, x: { ticks: { font: { size: chartFontSize }, maxRotation: 15 } } },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: chartFontSize } } } },
+                    elements: { line: { borderWidth: 2, tension: 0.1 }, point: { radius: pointRad } }
                 }
             });
 
@@ -463,9 +486,9 @@
                 data: { labels: labels, datasets: [{ data: rankData, borderColor: '#E67E22', backgroundColor: 'rgba(230, 126, 34, 0.1)', fill: true }] },
                 options: { 
                     responsive: true, maintainAspectRatio: false, 
-                    scales: { y: { reverse: true, min: 1, max: maxRankFound + 2 }, x: { ticks: { font: { size: 10 }, maxRotation: 15 } } }, 
+                    scales: { y: { reverse: true, min: 1, max: maxRankFound + 2, ticks: { font: { size: chartFontSize }, stepSize: 5 } }, x: { ticks: { font: { size: chartFontSize }, maxRotation: 15 } } }, 
                     plugins: { legend: { display: false } },
-                    elements: { line: { borderWidth: 3, tension: 0.1 }, point: { radius: 5, backgroundColor: '#E67E22' } }
+                    elements: { line: { borderWidth: 2.5, tension: 0.1 }, point: { radius: pointRad+1, backgroundColor: '#E67E22' } }
                 }
             });
         }
