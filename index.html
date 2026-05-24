@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         body { font-family: 'PingFang TC', 'Heiti TC', 'Microsoft JhengHei', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .chart-container { position: relative; width: 100%; height: 320px; }
-        @media (max-width: 640px) { .chart-container { height: 260px; } }
+        .chart-container { position: relative; width: 100%; height: 350px; }
+        @media (max-width: 640px) { .chart-container { height: 280px; } }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -56,7 +56,7 @@
         </div>
     </div>
 
-    <div id="dashboard-section" class="hidden max-w-4xl mx-auto px-3 py-4 sm:px-4 sm:py-6 animate-fade-in">
+    <div id="dashboard-section" class="hidden max-w-5xl mx-auto px-3 py-4 sm:px-4 sm:py-6 animate-fade-in">
         <header class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-3 mb-4">
             <div class="flex items-center gap-3">
                 <div class="w-10 h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-lg shadow-md shadow-indigo-600/20">
@@ -98,30 +98,30 @@
         </div>
 
         <div id="tab-content-1" class="hidden space-y-4">
-            <div class="grid grid-cols-3 gap-2 sm:gap-3">
-                <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[9px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider">五科總分</p>
-                    <p id="metric-total-score" class="text-lg font-black text-indigo-600">--</p>
+            <div class="grid grid-cols-3 gap-2 sm:gap-4">
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">五科總分</p>
+                    <p id="metric-total-score" class="text-xl sm:text-2xl font-black text-indigo-600">--</p>
                 </div>
-                <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[9px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider">班級名次</p>
-                    <p id="metric-rank" class="text-lg font-black text-slate-800">--</p>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">班級名次</p>
+                    <p id="metric-rank" class="text-xl sm:text-2xl font-black text-slate-800">--</p>
                 </div>
-                <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-100 text-center">
-                    <p class="text-[9px] font-bold text-slate-400 mb-0.5 uppercase tracking-wider">總 PR 值</p>
-                    <p id="metric-pr" class="text-lg font-black text-emerald-600">--</p>
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 text-center">
+                    <p class="text-[10px] sm:text-xs font-bold text-slate-400 mb-1 uppercase tracking-wider">總 PR 值</p>
+                    <p id="metric-pr" class="text-xl sm:text-2xl font-black text-emerald-600">--</p>
                 </div>
             </div>
 
             <div class="flex flex-col lg:flex-row gap-4">
                 <div class="flex-1 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
                     <h3 class="text-sm font-bold text-slate-900 mb-4"><i class="fa-solid fa-list-check text-indigo-500 mr-2"></i>成績明細與指標</h3>
-                    <div id="score-details-list" class="space-y-1.5 text-xs font-medium text-slate-600">
+                    <div id="score-details-list" class="space-y-2 text-xs sm:text-sm font-medium text-slate-600">
                         </div>
                 </div>
-                <div class="flex-1 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center">
-                    <h3 class="text-sm font-bold text-slate-900 mb-4 self-start"><i class="fa-solid fa-bullseye text-indigo-500 mr-2"></i>能力核心 (完全複製 Matplotlib 風格)</h3>
-                    <div class="w-full max-w-[300px] aspect-square relative">
+                <div class="flex-1 bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                    <h3 class="text-sm font-bold text-slate-900 mb-2 self-start"><i class="fa-solid fa-bullseye text-indigo-500 mr-2"></i>能力核心雷達圖</h3>
+                    <div class="w-full max-w-[320px] aspect-square relative">
                         <canvas id="radarChart"></canvas>
                     </div>
                 </div>
@@ -129,21 +129,15 @@
         </div>
 
         <div id="tab-content-2" class="hidden space-y-4">
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-xs font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <div class="w-1.5 h-1.5 bg-indigo-500 rounded-full"></div> 一年級真實 PR 軌跡
+            <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-chart-line text-indigo-500"></i> 全學期各科 PR 值走勢圖
                 </h3>
-                <div class="chart-container"><canvas id="historyPrChart1"></canvas></div>
+                <div class="chart-container"><canvas id="historyPrChart"></canvas></div>
             </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-xs font-bold text-slate-900 mb-3 flex items-center gap-2">
-                    <div class="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div> 二年級真實 PR 軌跡 (融合邏輯對應)
-                </h3>
-                <div class="chart-container"><canvas id="historyPrChart2"></canvas></div>
-            </div>
-            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
-                <h3 class="text-xs font-bold text-orange-500 mb-3 flex items-center gap-2 uppercase tracking-wider">
-                    <i class="fa-solid fa-arrow-trend-up"></i> 🏆 班級名次晉升軌跡 (跨學年數據反轉)
+            <div class="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-slate-100">
+                <h3 class="text-sm font-bold text-orange-500 mb-4 flex items-center gap-2 uppercase tracking-wider">
+                    <i class="fa-solid fa-arrow-trend-up"></i> 🏆 班級名次晉升軌跡 (曲線往上為進步)
                 </h3>
                 <div class="chart-container"><canvas id="historyRankChart"></canvas></div>
             </div>
@@ -160,13 +154,11 @@
         const API_URL = "https://script.google.com/macros/s/AKfycbyEIoXhHnX3S-JQw_CQp4eWFsbPGsKkHFBsCg9xVsW499n2MgXJaHvpiyV9XYtsECzsaA/exec";
         const MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAijJICjHzPxJLcPIEngF0wko8/export?format=csv&gid=0";
 
-        // 全局狀態暫存
         let sessionState = { loggedIn: false, role: null, userId: null };
         let cachedMenuData = [];
-        let allExamsData = {}; // 快取所有讀取過的考試數據
-        let charts = { radar: null, h1: null, h2: null, h3: null, rank: null };
+        let allExamsData = {}; 
+        let charts = { radar: null, historyPr: null, historyRank: null };
 
-        // 身分選擇 UI 調整
         function toggleRoleInput() {
             const role = document.querySelector('input[name="role"]:checked').value;
             const label = document.getElementById("username-label");
@@ -175,7 +167,6 @@
             else { label.innerText = "座號："; input.placeholder = "例如：5"; }
         }
 
-        // 登入驗證處理
         async function handleLogin() {
             const role = document.querySelector('input[name="role"]:checked').value;
             const userId = document.getElementById("username").value.trim();
@@ -190,41 +181,24 @@
             btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> <span>正在精密驗證中...</span>`;
 
             try {
-                // 發出驗證請求給守門員 (Apps Script)
                 const resp = await fetch(`${API_URL}?role=${role}&userId=${encodeURIComponent(userId)}&password=${encodeURIComponent(password)}`);
                 const result = await resp.json();
 
                 if (result.status === "success") {
-                    sessionState.loggedIn = true;
-                    sessionState.role = result.role;
-                    sessionState.userId = role === "teacher" ? "yen" : parseInt(userId);
-                    
+                    sessionState.loggedIn = true; sessionState.role = result.role; sessionState.userId = role === "teacher" ? "yen" : parseInt(userId);
                     document.getElementById("login-section").classList.add("hidden");
                     document.getElementById("dashboard-section").classList.remove("hidden");
-                    
                     initDashboard();
-                } else {
-                    errorEl.innerText = "❌ " + result.message;
-                    errorEl.classList.remove("hidden");
-                }
-            } catch (err) {
-                errorEl.innerText = "❌ 無法連線至驗證伺服器，請確認網路環境或 VPN。";
-                errorEl.classList.remove("hidden");
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = `<span>🚀 登入系統</span>`;
-            }
+                } else { errorEl.innerText = "❌ " + result.message; errorEl.classList.remove("hidden"); }
+            } catch (err) { errorEl.innerText = "❌ 無法連線至驗證伺服器。"; errorEl.classList.remove("hidden"); }
+            finally { btn.disabled = false; btn.innerHTML = `<span>🚀 登入系統</span>`; }
         }
 
-        // 登出與重整
         function handleLogout() { location.reload(); }
 
-        // 分頁切換 (手機版優化)
         function switchTab(tabNum) {
-            const t1Btn = document.getElementById("tab-btn-1");
-            const t2Btn = document.getElementById("tab-btn-2");
-            const t1Content = document.getElementById("tab-content-1");
-            const t2Content = document.getElementById("tab-content-2");
+            const t1Btn = document.getElementById("tab-btn-1"); const t2Btn = document.getElementById("tab-btn-2");
+            const t1Content = document.getElementById("tab-content-1"); const t2Content = document.getElementById("tab-content-2");
 
             if (tabNum === 1) {
                 t1Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition bg-white shadow-sm text-indigo-600";
@@ -234,11 +208,10 @@
                 t2Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition bg-white shadow-sm text-indigo-600";
                 t1Btn.className = "flex-1 py-2.5 rounded-lg font-bold text-xs transition text-slate-500";
                 t2Content.classList.remove("hidden"); t1Content.classList.add("hidden");
-                renderHistoryCharts(); // 點擊歷程分頁才繪製圖表
+                renderHistoryCharts(); 
             }
         }
 
-        // 轉換 Google Sheet 網址為 CSV 下載網址
         function cleanGoogleSheetUrl(url) {
             if (url.includes("export?format=csv")) return url;
             const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
@@ -250,7 +223,6 @@
             return url;
         }
 
-        // 解析 CSV 文字演算法 ( Fractional Ranking )
         function parseCSVText(text) {
             const lines = text.split(/\r?\n/);
             return lines.map(line => {
@@ -265,14 +237,12 @@
             }).filter(row => row.length > 0 && row.some(cell => cell !== ""));
         }
 
-        // 初始化主控面板
         async function initDashboard() {
             document.getElementById("global-loader").classList.remove("hidden");
             const badgeText = sessionState.role === "teacher" ? "導師主控模式 (yen)" : `801班 座號${sessionState.userId} 成績報告`;
             document.getElementById("user-badge-text").innerText = badgeText;
 
             try {
-                // 1. 讀取總表
                 const resp = await fetch(MASTER_MENU_URL);
                 const csvText = await resp.text();
                 const rows = parseCSVText(csvText);
@@ -282,7 +252,6 @@
                     let obj = {}; headers.forEach((h, i) => obj[h] = row[i]); return obj;
                 });
 
-                // 2. 填充段考下拉選單
                 const examSelect = document.getElementById("exam-select");
                 examSelect.innerHTML = "";
                 cachedMenuData.forEach(item => {
@@ -290,7 +259,6 @@
                     if (name) { let opt = document.createElement("option"); opt.value = name; opt.innerText = name; examSelect.appendChild(opt); }
                 });
 
-                // 3. 填充導師座號選單
                 if (sessionState.role === "teacher") {
                     document.getElementById("teacher-seat-picker").classList.remove("hidden");
                     const seatSelect = document.getElementById("seat-select");
@@ -300,15 +268,13 @@
                     }
                 }
 
-                // 4. 預加載所有考試數據 ( Fractional Ranking 即時計算)
                 await preloadAllExams();
                 onFilterChange();
 
-            } catch (err) { alert("無資料，連結 People of  know of can look at"); }
+            } catch (err) { alert("無法讀取主控總表！"); }
             finally { document.getElementById("global-loader").classList.add("hidden"); }
         }
 
-        // 預加載所有考試數據
         async function preloadAllExams() {
             for (let item of cachedMenuData) {
                 const name = item['考試檔案名稱或別名'] || item['考試名稱'];
@@ -324,7 +290,6 @@
             }
         }
 
-        // 精密處理與計算 Fractional Ranking PR 值數據
         function processSingleExamData(csvText, examName) {
             const rows = parseCSVText(csvText);
             const headers = rows[0];
@@ -337,24 +302,25 @@
                 const seatVal = parseInt(r['座號']);
                 if (!isNaN(seatVal) && seatVal > 0) students.push(r);
                 else {
-                    const nameStr = String(r['座號'] || r['姓名'] || '');
-                    if (nameStr.includes('高標')) stats['高標'] = r;
-                    if (nameStr.includes('平均') || nameStr.includes('均標')) stats['平均'] = r;
+                    // 全面搜索高標與均標
+                    const fullRowText = Object.values(r).join(" ");
+                    if (fullRowText.includes('高標')) stats['高標'] = r;
+                    if (fullRowText.includes('平均') || fullRowText.includes('均標')) stats['平均'] = r;
                 }
             });
 
-            // 科目預處理
-            const isGrade23 = examName.includes("二") || examName.includes("三");
+            // 動態判斷是否有分科(歷史地理公民) => 有分數代表是二三年級
+            let hasSoc3 = students.some(s => parseFloat(s['歷史']) > 0 || parseFloat(s['地理']) > 0 || parseFloat(s['公民']) > 0);
+            const isGrade23 = hasSoc3;
+
             students.forEach(s => {
                 ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民'].forEach(sub => s[sub] = parseFloat(s[sub]) || 0);
                 s['社會_融合'] = isGrade23 ? (((s['歷史'] || 0) + (s['地理'] || 0) + (s['公民'] || 0)) / 3) : (s['社會'] || 0);
                 s['總分'] = s['國文'] + s['英文'] + s['數學'] + s['自然'] + s['社會_融合'];
             });
 
-            // 計算名次 ( Fractional Ranking 最小排名法 )
             students.forEach(s => s['名次'] = 1 + students.filter(other => other['總分'] > s['總分']).length);
 
-            // 計算 fractional ranking 的 PR 值 (Pandas 核心演算法 Fractional Ranking)
             const radarSubs = isGrade23 ? ['國文', '英文', '數學', '自然', '歷史', '地理', '公民'] : ['國文', '英文', '數學', '自然', '社會'];
             students.forEach(s => {
                 let lowerT = students.filter(other => other['總分'] < s['總分']).length, equalT = students.filter(other => other['總分'] === s['總分']).length;
@@ -368,7 +334,6 @@
             return { students, stats, isGrade23 };
         }
 
-        // 篩選變更響應機制
         function onFilterChange() {
             const selectedExam = document.getElementById("exam-select").value;
             const currentSeat = sessionState.role === "teacher" ? parseInt(document.getElementById("seat-select").value) : sessionState.userId;
@@ -381,25 +346,23 @@
             if (!document.getElementById("tab-content-2").classList.contains("hidden")) renderHistoryCharts();
         }
 
-        // 渲染單次考試數據畫面 (Matplotlib 美化化)
         function renderSingleExamView(student, examPackage) {
             document.getElementById("metric-total-score").innerText = student['總分'].toFixed(1);
-            document.getElementById("metric-rank").innerText = `第 ${student['名次']} 名`;
+            document.getElementById("metric-rank").innerText = `第 ${student['名次']}`;
             document.getElementById("metric-pr").innerText = student['總PR'].toFixed(1);
 
-            // 填充科目細項明細 (加回高標功能)
             const listEl = document.getElementById("score-details-list"); listEl.innerHTML = "";
             const isGrade23 = examPackage.isGrade23;
             const displaySubs = isGrade23 ? ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民'] : ['國文', '英文', '數學', '自然', '社會'];
             displaySubs.forEach(sub => {
                 const score = student[sub] || 0, avg = parseFloat(examPackage.stats['平均']?.[sub]) || 0, high = parseFloat(examPackage.stats['高標']?.[sub]) || 0;
-                let row = document.createElement("div"); row.className = "flex items-center justify-between py-1.5 border-b border-slate-50 last:border-0";
+                let row = document.createElement("div"); row.className = "flex items-center justify-between py-2 border-b border-slate-100 last:border-0";
                 const prefix = ['歷史', '地理', '公民'].includes(sub) ? "└ " : "";
-                row.innerHTML = `<span>${prefix}${sub}</span><span class="font-mono text-slate-500"><span class="text-indigo-600 font-bold">${score.toFixed(1)}</span> <span class="text-slate-300 text-[10px]">/ 均:${avg.toFixed(1)} / 高:${high.toFixed(1)}</span></span>`;
+                row.innerHTML = `<span>${prefix}${sub}</span><span class="font-mono text-slate-500"><span class="text-indigo-600 font-bold text-base mr-1">${score.toFixed(1)}</span>分 <span class="text-slate-300 mx-1">|</span>均: ${avg.toFixed(1)} <span class="text-slate-300 mx-1">|</span>高: ${high.toFixed(1)}</span>`;
                 listEl.appendChild(row);
             });
 
-            // 繪製終極 Matplotlib 風格雷達圖
+            // 完美重現 Matplotlib 同心圓雷達圖
             const radarSubs = isGrade23 ? ['國文', '英文', '數學', '自然', '歷史', '地理', '公民'] : ['國文', '英文', '數學', '自然', '社會'];
             const prValues = radarSubs.map(sub => student[`${sub}_PR`] || 0);
 
@@ -408,12 +371,12 @@
             charts.radar = new Chart(ctx, {
                 type: 'radar',
                 data: {
-                    labels: radarSubs.map(s => `${s}`), // 雷達圖外部科目
+                    labels: radarSubs.map(s => `${s}(PR)`),
                     datasets: [{
-                        label: '個人真實能力',
+                        label: '個人表現',
                         data: prValues,
-                        backgroundColor: 'rgba(79, 129, 189, 0.25)', // 您提供的 Matplotlib 淺藍透明填充
-                        borderColor: 'rgba(79, 129, 189, 1)', // 深藍邊框
+                        backgroundColor: 'rgba(79, 129, 189, 0.35)', 
+                        borderColor: 'rgba(79, 129, 189, 1)', 
                         borderWidth: 2,
                         pointBackgroundColor: 'rgba(79, 129, 189, 1)',
                         pointBorderColor: '#fff',
@@ -424,7 +387,7 @@
                         label: 'PR 50 (中位數)',
                         data: Array(radarSubs.length).fill(50),
                         backgroundColor: 'transparent',
-                        borderColor: 'rgba(192, 80, 77, 0.8)', // 紅色虛線圓圈
+                        borderColor: 'rgba(192, 80, 77, 0.8)', 
                         borderWidth: 1.5,
                         borderDash: [5, 5],
                         pointRadius: 0, fill: false, 
@@ -435,9 +398,10 @@
                     scales: {
                         r: {
                             min: 0, max: 100,
-                            grid: { color: 'rgba(128, 128, 128, 0.1)', circular: false },
-                            angleLines: { color: 'rgba(128, 128, 128, 0.2)' },
-                            pointLabels: { font: { size: 10, weight: 'bold' }, color: '#333' },
+                            // 這行就是讓雷達圖變成圓圈的魔法！
+                            grid: { circular: true, color: 'rgba(200, 200, 200, 0.5)' },
+                            angleLines: { color: 'rgba(200, 200, 200, 0.5)' },
+                            pointLabels: { font: { size: 11, weight: 'bold' }, color: '#333' },
                             ticks: { display: false, stepSize: 25 },
                         }
                     },
@@ -446,14 +410,65 @@
             });
         }
 
-        // 綜合渲染跨學期分析走勢圖 (學年排序、Matplotlib 美化)
+        // 單一圖表完整歷史軌跡 (防止名稱斷線)
         function renderHistoryCharts() {
             const currentSeat = sessionState.role === "teacher" ? parseInt(document.getElementById("seat-select").value) : sessionState.userId;
             
-            // 撈取全量考試歷史清單並排序
-            let examRecords = [];
+            let labels = [], dataSets = { 國文:[], 英文:[], 數學:[], 自然:[], 社會融合:[] }, rankData = [];
+
+            // 按照總表順序一次畫完所有考試，絕對不會接錯！
             cachedMenuData.forEach(item => {
                 const name = item['考試檔案名稱或別名'] || item['考試名稱'];
                 const pkg = allExamsData[name];
                 if (pkg) {
-                    const stud = pkg.students.find(s => parseInt(s['座號']) === currentSeat
+                    const stud = pkg.students.find(s => parseInt(s['座號']) === currentSeat);
+                    if (stud) {
+                        labels.push(name);
+                        dataSets.國文.push(stud['國文_PR']); dataSets.英文.push(stud['英文_PR']);
+                        dataSets.數學.push(stud['數學_PR']); dataSets.自然.push(stud['自然_PR']);
+                        dataSets.社會融合.push(pkg.isGrade23 ? (stud['歷史_PR'] + stud['地理_PR'] + stud['公民_PR'])/3 : stud['社會_PR']);
+                        rankData.push(stud['名次']);
+                    }
+                }
+            });
+
+            if (charts.historyPr) charts.historyPr.destroy();
+            const ctxPr = document.getElementById('historyPrChart').getContext('2d');
+            charts.historyPr = new Chart(ctxPr, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        { label: '國文 PR', data: dataSets.國文, borderColor: '#4f81bd' },
+                        { label: '英文 PR', data: dataSets.英文, borderColor: '#c0504d' },
+                        { label: '數學 PR', data: dataSets.數學, borderColor: '#9bbb59' },
+                        { label: '自然 PR', data: dataSets.自然, borderColor: '#8064a2' },
+                        { label: '社會 PR', data: dataSets.社會融合, borderColor: '#4bacc6', borderWidth: 3 }
+                    ]
+                },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    scales: { y: { min: 0, max: 100, ticks: { font: { size: 10 } } }, x: { ticks: { font: { size: 10 }, maxRotation: 15 } } },
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } } },
+                    elements: { line: { borderWidth: 2.5, tension: 0.1 }, point: { radius: 4 } }
+                }
+            });
+
+            if (charts.historyRank) charts.historyRank.destroy();
+            const ctxRank = document.getElementById('historyRankChart').getContext('2d');
+            const maxRankFound = Math.max(...rankData, 30);
+            
+            charts.historyRank = new Chart(ctxRank, {
+                type: 'line',
+                data: { labels: labels, datasets: [{ data: rankData, borderColor: '#E67E22', backgroundColor: 'rgba(230, 126, 34, 0.1)', fill: true }] },
+                options: { 
+                    responsive: true, maintainAspectRatio: false, 
+                    scales: { y: { reverse: true, min: 1, max: maxRankFound + 2 }, x: { ticks: { font: { size: 10 }, maxRotation: 15 } } }, 
+                    plugins: { legend: { display: false } },
+                    elements: { line: { borderWidth: 3, tension: 0.1 }, point: { radius: 5, backgroundColor: '#E67E22' } }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
