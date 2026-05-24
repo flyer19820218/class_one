@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
-    <title>801 專屬成績大數據主控台</title>
+    <title>一班線上成績查詢系統</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -29,8 +29,8 @@
                 <div class="inline-flex items-center justify-center w-12 h-12 md:w-14 md:h-14 bg-indigo-50 text-indigo-600 rounded-2xl text-xl md:text-2xl mb-3 md:mb-4">
                     <i class="fa-solid fa-user-lock"></i>
                 </div>
-                <h2 class="text-lg md:text-xl font-black text-slate-900">一班線上成績系統</h2>
-                <p class="text-slate-500 text-[11px] md:text-xs mt-1 px-2 font-medium">請不要讓別人知道你的身份字號</p>
+                <h2 class="text-lg md:text-xl font-black text-slate-900">一班線上成績查詢系統</h2>
+                <p class="text-slate-500 text-[11px] md:text-xs mt-1 px-2 font-medium">請選擇身分並登入系統</p>
             </div>
 
             <div class="space-y-4">
@@ -68,7 +68,7 @@
                     <i class="fa-solid fa-graduation-cap"></i>
                 </div>
                 <div>
-                    <h1 class="text-sm md:text-lg font-black text-slate-900 leading-tight">801 專屬成績主控台</h1>
+                    <h1 class="text-sm md:text-lg font-black text-slate-900 leading-tight">一班線上成績查詢系統</h1>
                     <p id="user-badge-text" class="text-slate-400 text-[10px] md:text-xs font-medium">載入中...</p>
                 </div>
             </div>
@@ -99,7 +99,7 @@
 
         <div id="global-loader" class="text-center py-8 hidden">
             <div class="inline-block animate-spin rounded-full h-5 w-5 border-4 border-indigo-600 border-t-transparent mb-2"></div>
-            <p class="text-slate-400 text-[11px] font-medium">大數據分析中...</p>
+            <p class="text-slate-400 text-[11px] font-medium">系統分析中...</p>
         </div>
 
         <div id="tab-content-1" class="hidden space-y-3 md:space-y-4">
@@ -273,7 +273,7 @@
                 await preloadAllExams();
                 onFilterChange();
 
-            } catch (err) { alert("無法讀取主控總表！"); }
+            } catch (err) { alert("無法讀取總表資料！"); }
             finally { document.getElementById("global-loader").classList.add("hidden"); }
         }
 
