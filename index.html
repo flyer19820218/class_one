@@ -69,7 +69,7 @@
                 </div>
                 <div>
                     <h1 class="text-sm md:text-lg font-black text-slate-900 leading-tight">一班線上成績查詢系統</h1>
-                    <p id="user-badge-text" class="text-slate-400 text-[10px] md:text-xs font-medium">載入中...</p>
+                    <p id="user-badge-text" class="text-slate-400 text-[10px] md:text-xs font-bold text-indigo-600 mt-0.5">載入中...</p>
                 </div>
             </div>
             <button onclick="handleLogout()" class="text-slate-300 hover:text-red-500 transition p-1.5 md:p-2 text-lg md:text-xl">
@@ -178,7 +178,7 @@
             if (!userId || !password) { errorEl.innerText = "❌ 帳號與密碼欄位不能為空！"; errorEl.classList.remove("hidden"); return; }
 
             btn.disabled = true;
-            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> <span>正在精密驗證中...</span>`;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> <span>正在登入中...</span>`;
 
             try {
                 const resp = await fetch(`${API_URL}?role=${role}&userId=${encodeURIComponent(userId)}&password=${encodeURIComponent(password)}`);
@@ -238,11 +238,10 @@
             }).filter(row => row.length > 0 && row.some(cell => cell !== ""));
         }
 
-        // --- 4. 核心數據載入與解析 (Fractional Ranking) ---
+        // --- 4. 核心數據載入與解析 ---
         async function initDashboard() {
             document.getElementById("global-loader").classList.remove("hidden");
-            const badgeText = sessionState.role === "teacher" ? "導師 (yen)" : `座號 ${sessionState.userId}`;
-            document.getElementById("user-badge-text").innerText = badgeText;
+            document.getElementById("user-badge-text").innerText = "資料同步中...";
 
             try {
                 const resp = await fetch(MASTER_MENU_URL);
@@ -266,7 +265,7 @@
                     const seatSelect = document.getElementById("seat-select");
                     seatSelect.innerHTML = "";
                     for (let i = 1; i <= 31; i++) {
-                        let opt = document.createElement("option"); opt.value = i; opt.innerText = `${i} 號學生`; seatSelect.appendChild(opt);
+                        let opt = document.createElement("option"); opt.value = i; opt.innerText = `${i} 號`; seatSelect.appendChild(opt);
                     }
                 }
 
@@ -334,6 +333,7 @@
             return { students, stats, isGrade23 };
         }
 
+        // --- 加入動態姓名的關鍵函數 ---
         function onFilterChange() {
             const selectedExam = document.getElementById("exam-select").value;
             const currentSeat = sessionState.role === "teacher" ? parseInt(document.getElementById("seat-select").value) : sessionState.userId;
@@ -341,6 +341,14 @@
             if (!examPackage) return;
             const student = examPackage.students.find(s => parseInt(s['座號']) === currentSeat);
             if (!student) { document.getElementById("tab-content-1").classList.add("hidden"); return; }
+            
+            // ⭐ 這裡會抓取該名學生的名字，並更新到右上角的 Badge
+            const studentName = student['姓名'] || "";
+            const badgeText = sessionState.role === "teacher" 
+                ? `導師視角：${currentSeat}號 ${studentName}`
+                : `${currentSeat}號 ${studentName} 的成績報告`;
+            document.getElementById("user-badge-text").innerText = badgeText;
+
             document.getElementById("tab-content-1").classList.remove("hidden");
             renderSingleExamView(student, examPackage);
             if (!document.getElementById("tab-content-2").classList.contains("hidden")) renderHistoryCharts();
