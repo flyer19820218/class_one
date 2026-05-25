@@ -20,27 +20,38 @@
         .animate-fade-in { animation: fadeIn 0.3s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
+        /* 列印專屬標題 (網頁平時隱藏) */
+        .print-only-header { display: none; }
+
         /* ========================================== */
-        /* 🖨️ 專門鎖定 A4 尺寸的魔法列印規則 */
+        /* 🖨️ 專門鎖定 A4 尺寸與圖表置中的列印規則 */
         /* ========================================== */
         @media print {
             @page { size: A4 portrait; margin: 10mm; } 
             body { background: #ffffff !important; color: #000000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             
+            /* 打開列印專屬標題 */
+            .print-only-header { display: block !important; text-align: center; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #cbd5e1; }
+            
+            /* 隱藏網頁導覽列與按鈕 */
             header, .no-print, #login-section, .bg-slate-200\/50, select, button, #teacher-seat-picker {
                 display: none !important;
             }
             
-            #dashboard-section { display: block !important; padding: 0 !important; margin: 0 !important; width: 100% !important; }
+            #dashboard-section { display: block !important; padding: 0 !important; margin: 0 !important; width: 100% !important; max-width: 100% !important; }
             
             .bg-white { background: #ffffff !important; box-shadow: none !important; border: 1px solid #cbd5e1 !important; padding: 15px !important; margin-bottom: 15px !important; }
             
-            /* 修正版：精準標靶左右並排，不誤殺內部元素 */
-            .print-row { display: flex !important; flex-direction: row !important; gap: 15px !important; }
+            .print-row { display: flex !important; flex-direction: row !important; gap: 15px !important; width: 100% !important; }
             .flex-1 { flex: 1 !important; }
             
-            .chart-container { page-break-inside: avoid !important; }
-            canvas { max-width: 100% !important; height: auto !important; }
+            /* 修正 1：強制雷達圖容器與畫布絕對置中 */
+            .print-radar-box { display: flex !important; flex-direction: column !important; justify-content: center !important; align-items: center !important; width: 100% !important; }
+            .print-radar-box div { margin: 0 auto !important; display: flex !important; justify-content: center !important; }
+            canvas { margin: 0 auto !important; }
+            
+            /* 修正 2：強制跨學期折線圖撐滿 100% 寬度，不准切一半 */
+            .chart-container { page-break-inside: avoid !important; width: 100% !important; display: block !important; }
         }
     </style>
 </head>
@@ -85,6 +96,12 @@
     </div>
 
     <div id="dashboard-section" class="hidden max-w-5xl mx-auto px-2 py-3 sm:px-4 sm:py-6 animate-fade-in">
+        
+        <div class="print-only-header">
+            <h2 class="text-2xl font-black text-slate-900">一班 專屬成績分析報告</h2>
+            <p id="print-badge-text" class="text-lg font-bold text-indigo-600 mt-2">載入中...</p>
+        </div>
+
         <header class="bg-white p-3 sm:p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between gap-2 mb-3 md:mb-4">
             <div class="flex items-center gap-2.5 md:gap-3">
                 <div class="w-9 h-9 md:w-10 md:h-10 bg-indigo-600 text-white rounded-xl flex items-center justify-center text-base md:text-lg shadow-md shadow-indigo-600/20">
@@ -152,9 +169,9 @@
                     <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-3 md:mb-4"><i class="fa-solid fa-list-check text-indigo-500 mr-1.5 md:mr-2"></i>成績明細與指標</h3>
                     <div id="score-details-list" class="space-y-1.5 md:space-y-2 text-[11px] md:text-sm font-medium text-slate-600"></div>
                 </div>
-                <div class="flex-1 bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center">
+                <div class="flex-1 bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col items-center justify-center print-radar-box">
                     <h3 class="text-xs md:text-sm font-bold text-slate-900 mb-1 md:mb-2 self-start"><i class="fa-solid fa-bullseye text-indigo-500 mr-1.5 md:mr-2"></i>能力核心雷達圖</h3>
-                    <div class="w-full max-w-[260px] md:max-w-[320px] aspect-square relative mx-auto">
+                    <div class="w-full max-w-[260px] md:max-w-[320px] aspect-square relative mx-auto flex justify-center items-center">
                         <canvas id="radarChart"></canvas>
                     </div>
                 </div>
@@ -373,10 +390,14 @@
             if (!student) { document.getElementById("tab-content-1").classList.add("hidden"); return; }
             
             const studentName = student['姓名'] || "";
+            // 更新網頁標籤
             const badgeText = sessionState.role === "teacher" 
                 ? `導師視角：${currentSeat}號 ${studentName}`
                 : `${currentSeat}號 ${studentName} 的成績報告`;
             document.getElementById("user-badge-text").innerText = badgeText;
+            
+            // ⭐ 更新列印專屬標題，把考試名稱、座號、姓名一起印上去
+            document.getElementById("print-badge-text").innerText = `${selectedExam} - ${currentSeat}號 ${studentName}`;
 
             document.getElementById("tab-content-1").classList.remove("hidden");
             renderSingleExamView(student, examPackage);
