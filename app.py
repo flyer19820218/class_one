@@ -63,7 +63,7 @@ def check_is_grade_2_or_3(exam_name):
     return False
 
 # ==========================================
-# 🌟 導師專屬 ─ 跨學期全班總平均 Excel 產生器 (絕對防彈版)
+# 區塊 3: 導師專屬 ─ 跨學期全班總平均 Excel 產生器
 # ==========================================
 def generate_semester_average_excel(df_menu):
     all_data = []
@@ -74,7 +74,6 @@ def generate_semester_average_excel(df_menu):
         
         df_exam = load_data(file_url)
         if df_exam is not None:
-            # 防呆：確保成績單有座號欄位才處理
             if '座號' not in df_exam.columns:
                 continue
                 
@@ -87,7 +86,7 @@ def generate_semester_average_excel(df_menu):
                 seat = int(pd.to_numeric(s_row.get('座號'), errors='coerce'))
                 name = str(s_row.get('姓名', '')).strip()
                 
-                # 🌟 絕對防呆寫法：用 .get() 抓取，沒有這個科目就給 NaN，絕對不報錯！
+                # 絕對安全寫法：使用 .get() 容錯，若缺考或無此學科欄位則自動帶入 NaN
                 record = {
                     '座號': seat,
                     '姓名': name,
@@ -122,26 +121,25 @@ def generate_semester_average_excel(df_menu):
         
     df_all = pd.DataFrame(all_data)
     
-    # 依照學生座號與姓名分組，計算平均 (使用 numeric_only 確保不會因為全空欄位出錯)
+    # 進行全班分組平均計算
     df_mean = df_all.groupby(['座號', '姓名']).mean(numeric_only=True).reset_index()
     
-    # 二次防護罩：強迫點名所有科目，如果整個 DataFrame 被弄丟了哪個欄位，強行生出來
+    # 確保所有必備欄位均存在於結果中
     for col in ['國文', '英文', '數學', '自然', '社會_融合', '歷史', '地理', '公民']:
         if col not in df_mean.columns:
             df_mean[col] = np.nan
             
-    # 計算五科總平均，並使用 fillna(0) 確保加總不會因為一次沒考而壞掉
+    # 計算會考標準五科總和平均
     df_mean['五科總平均'] = (df_mean['國文'].fillna(0) + df_mean['英文'].fillna(0) + 
                           df_mean['數學'].fillna(0) + df_mean['自然'].fillna(0) + 
                           df_mean['社會_融合'].fillna(0)) / 5
                           
-    # 如果五科全部都是空值，總平均也給空值
     mask_all_na = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].isna().all(axis=1)
     df_mean.loc[mask_all_na, '五科總平均'] = np.nan
     
     df_mean = df_mean.sort_values('座號')
     
-    # 建立 Excel 檔案
+    # 產出 Excel 結構
     wb = Workbook()
     ws = wb.active
     ws.title = "全班學期總平均"
@@ -164,7 +162,7 @@ def generate_semester_average_excel(df_menu):
         ]
         ws.append(row_data)
         
-    # 美化 Excel 表格
+    # 設定框線與格式
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=11):
         for cell in row:
@@ -173,7 +171,6 @@ def generate_semester_average_excel(df_menu):
             if cell.row == 1:
                 cell.font = Font(bold=True)
                 
-    # 調整欄寬
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = 12
                 
@@ -182,7 +179,7 @@ def generate_semester_average_excel(df_menu):
     return out.getvalue()
 
 # ==========================================
-# 區塊 3: 雷達圖產生器 & 歷史數據撈取
+# 區塊 4: 雷達圖產生器 & 歷史數據撈取
 # ==========================================
 def draw_web_radar_chart(labels, pr_scores):
     pr_scores = [0 if pd.isna(x) else x for x in pr_scores]
@@ -262,7 +259,7 @@ def fetch_student_history(df_menu, seat_num):
     return pd.DataFrame(history_records)
 
 # ==========================================
-# 區塊 4: 登入介面邏輯
+# 區塊 5: 登入介面邏輯
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔐 801 專屬成績系統 - 登入")
@@ -304,7 +301,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==========================================
-# 區塊 5: 系統主介面 (登入後)
+# 區塊 6: 系統主介面 (登入後)
 # ==========================================
 col_title, col_logout = st.columns([0.8, 0.2])
 with col_title:
@@ -336,23 +333,23 @@ MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAij
 df_menu = load_data(MASTER_MENU_URL)
 
 if df_menu is not None:
-    # 🌟 導師專屬：全班跨歷史成績總平均下載功能區
+    # 🌟 導師專屬：全班總平均結算區塊
     if st.session_state.role == "teacher":
-        with st.expander("📊 導師專屬功能：全班跨學期各科總平均統計", expanded=True):
-            st.markdown("點擊下方按鈕後，系統將自動提取雲端主控總表登錄之所有段考成績，動態結算全班學生的跨學期個人總平均明細。")
-            if st.button("🚀 開始計算全班總平均", type="primary"):
-                with st.spinner("正在讀取雲端各段考數據並進行交叉運算..."):
-                    excel_summary = generate_semester_average_excel(df_menu)
-                    if excel_summary:
-                        st.success("✅ 全班各科總平均計算完成！")
+        with st.expander("📊 導師專屬功能：匯出全班學期各科總平均 Excel", expanded=True):
+            st.write("點擊下方按鈕，系統將自動讀取主控台內的所有段考成績，計算全班每位學生的「各科跨學期平均」與「五科總平均」。")
+            if st.button("🚀 結算並匯出全班總表", type="primary"):
+                with st.spinner("正在結算各次段考數據中，請稍候..."):
+                    excel_data = generate_semester_average_excel(df_menu)
+                    if excel_data:
+                        st.success("✅ 全班學期總平均計算完成！")
                         st.download_button(
-                            label="📥 點我下載【全班學期各科總平均匯總表】",
-                            data=excel_summary,
-                            file_name="801_全班學期各科總平均匯總表.xlsx",
+                            label="📥 點我下載【全班各科總平均 Excel】",
+                            data=excel_data,
+                            file_name="801_全班學期各科總平均.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     else:
-                        st.error("❌ 提取失敗，請檢查主控總表內的試算表連結與權限。")
+                        st.error("❌ 運算失敗，請確認主控台內是否有成績資料。")
         st.markdown("---")
 
     if '考試檔案名稱或別名' in df_menu.columns:
@@ -387,12 +384,12 @@ if df_menu is not None:
                     for c in cols_to_extract:
                         if c in row:
                             if c not in stats_dict: stats_dict[c] = {}
-                            stats_dict[c]['high'] = pd.to_numeric(row[c], errors='coerce')
+                            stats_dict[c]['高標'] = pd.to_numeric(row[c], errors='coerce')
                 if '平均' in name or '均標' in name:
                     for c in cols_to_extract:
                         if c in row:
                             if c not in stats_dict: stats_dict[c] = {}
-                            stats_dict[c]['average'] = pd.to_numeric(row[c], errors='coerce')
+                            stats_dict[c]['平均'] = pd.to_numeric(row[c], errors='coerce')
             
             if has_7_subjects:
                 display_subs = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
@@ -452,8 +449,8 @@ if df_menu is not None:
                         if s in stud_data:
                             score = float(stud_data[s]) if pd.notna(stud_data[s]) else 0.0
                             stat = stats_dict.get(s, {})
-                            avg = float(stat.get('average', 0)) if pd.notna(stat.get('average')) else 0.0
-                            high = float(stat.get('high', 0)) if pd.notna(stat.get('high')) else 0.0
+                            avg = float(stat.get('平均', 0)) if pd.notna(stat.get('平均')) else 0.0
+                            high = float(stat.get('高標', 0)) if pd.notna(stat.get('高標')) else 0.0
                             
                             if s in ['歷史', '地理', '公民']:
                                 st.text(f"  └ {s}：{score:.2f}  (班均: {avg:.2f} | 高標: {high:.2f})")
