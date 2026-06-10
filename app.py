@@ -63,39 +63,44 @@ def check_is_grade_2_or_3(exam_name):
     return False
 
 # ==========================================
-# 🌟 導師專屬 ─ 跨學期全班總平均 Excel 產生器 (已修復 KeyError)
+# 🌟 導師專屬 ─ 跨學期全班總平均 Excel 產生器 (絕對防彈版)
 # ==========================================
 def generate_semester_average_excel(df_menu):
     all_data = []
     
     for _, row in df_menu.iterrows():
-        exam_name = str(row['考試檔案名稱或別名'] if '考試檔案名稱或別名' in df_menu.columns else row['考試名稱']).strip()
+        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
         file_url = str(row['該次成績單的 Google 試算表網址']).strip()
         
         df_exam = load_data(file_url)
         if df_exam is not None:
+            # 防呆：確保成績單有座號欄位才處理
+            if '座號' not in df_exam.columns:
+                continue
+                
             df_exam['_is_student'] = pd.to_numeric(df_exam['座號'], errors='coerce').notna()
             df_stud = df_exam[df_exam['_is_student']].copy()
-            
-            # 🌟 終極防護罩：確保所有標準欄位都存在，沒有的就補上空值 (避免 KeyError)
-            for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
-                if col not in df_stud.columns:
-                    df_stud[col] = np.nan
             
             is_grade_2_3 = check_is_grade_2_or_3(exam_name)
             
             for _, s_row in df_stud.iterrows():
-                seat = int(pd.to_numeric(s_row['座號'], errors='coerce'))
-                name = str(s_row['姓名']).strip()
+                seat = int(pd.to_numeric(s_row.get('座號'), errors='coerce'))
+                name = str(s_row.get('姓名', '')).strip()
                 
-                record = {'座號': seat, '姓名': name}
-                for sub in ['國文', '英文', '數學', '自然']:
-                    record[sub] = pd.to_numeric(s_row[sub], errors='coerce')
+                # 🌟 絕對防呆寫法：用 .get() 抓取，沒有這個科目就給 NaN，絕對不報錯！
+                record = {
+                    '座號': seat,
+                    '姓名': name,
+                    '國文': pd.to_numeric(s_row.get('國文', np.nan), errors='coerce'),
+                    '英文': pd.to_numeric(s_row.get('英文', np.nan), errors='coerce'),
+                    '數學': pd.to_numeric(s_row.get('數學', np.nan), errors='coerce'),
+                    '自然': pd.to_numeric(s_row.get('自然', np.nan), errors='coerce')
+                }
                 
                 if is_grade_2_3:
-                    his = pd.to_numeric(s_row['歷史'], errors='coerce')
-                    geo = pd.to_numeric(s_row['地理'], errors='coerce')
-                    civ = pd.to_numeric(s_row['公民'], errors='coerce')
+                    his = pd.to_numeric(s_row.get('歷史', np.nan), errors='coerce')
+                    geo = pd.to_numeric(s_row.get('地理', np.nan), errors='coerce')
+                    civ = pd.to_numeric(s_row.get('公民', np.nan), errors='coerce')
                     record['歷史'] = his
                     record['地理'] = geo
                     record['公民'] = civ
@@ -104,7 +109,7 @@ def generate_semester_average_excel(df_menu):
                     else:
                         record['社會_融合'] = np.nan
                 else:
-                    soc = pd.to_numeric(s_row['社會'], errors='coerce')
+                    soc = pd.to_numeric(s_row.get('社會', np.nan), errors='coerce')
                     record['社會_融合'] = soc
                     record['歷史'] = soc
                     record['地理'] = soc
@@ -116,16 +121,24 @@ def generate_semester_average_excel(df_menu):
         return None
         
     df_all = pd.DataFrame(all_data)
-    # 依照學生座號與姓名分組，計算所有考試的平均值
-    df_mean = df_all.groupby(['座號', '姓名']).mean().reset_index()
     
-    # 再次確認所需欄位都存在防呆
+    # 依照學生座號與姓名分組，計算平均 (使用 numeric_only 確保不會因為全空欄位出錯)
+    df_mean = df_all.groupby(['座號', '姓名']).mean(numeric_only=True).reset_index()
+    
+    # 二次防護罩：強迫點名所有科目，如果整個 DataFrame 被弄丟了哪個欄位，強行生出來
     for col in ['國文', '英文', '數學', '自然', '社會_融合', '歷史', '地理', '公民']:
         if col not in df_mean.columns:
             df_mean[col] = np.nan
             
-    # 計算五科總平均 (國+英+數+自+社) / 5
-    df_mean['五科總平均'] = (df_mean['國文'] + df_mean['英文'] + df_mean['數學'] + df_mean['自然'] + df_mean['社會_融合']) / 5
+    # 計算五科總平均，並使用 fillna(0) 確保加總不會因為一次沒考而壞掉
+    df_mean['五科總平均'] = (df_mean['國文'].fillna(0) + df_mean['英文'].fillna(0) + 
+                          df_mean['數學'].fillna(0) + df_mean['自然'].fillna(0) + 
+                          df_mean['社會_融合'].fillna(0)) / 5
+                          
+    # 如果五科全部都是空值，總平均也給空值
+    mask_all_na = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].isna().all(axis=1)
+    df_mean.loc[mask_all_na, '五科總平均'] = np.nan
+    
     df_mean = df_mean.sort_values('座號')
     
     # 建立 Excel 檔案
@@ -323,7 +336,7 @@ MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAij
 df_menu = load_data(MASTER_MENU_URL)
 
 if df_menu is not None:
-    # 🌟 新增：導師專屬 ─ 全班跨歷史成績總平均下載功能區
+    # 🌟 導師專屬：全班跨歷史成績總平均下載功能區
     if st.session_state.role == "teacher":
         with st.expander("📊 導師專屬功能：全班跨學期各科總平均統計", expanded=True):
             st.markdown("點擊下方按鈕後，系統將自動提取雲端主控總表登錄之所有段考成績，動態結算全班學生的跨學期個人總平均明細。")
