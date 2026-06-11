@@ -229,21 +229,11 @@ def pr_to_level(pr):
 
 
 # ==========================================
-# 核心：從主控表撈取指定班級的跨學期 PR 平均
-# 支援兩種座號格式：5位數學號 或 班內座號
-# 主控表需有「班級」欄（填 701、801 等）
+# 核心：從主控表撈取指定班級的跨學期 PR 平均 (已修復過濾錯誤)
 # ==========================================
 def get_class_pr_data(df_menu, target_class):
-    """
-    target_class: 班級代碼字串，例如 '801' 或 '1'（末尾班號）
-    回傳 DataFrame，每列是一位學生，欄位含各科PR平均
-    支援：
-      - 5位數學號模式（70101）：從學號後3碼比對班級
-      - 班內座號模式（1~35）：主控表需有「班級」欄指定每份成績屬於哪班
-    """
     all_data = []
     exam_col, url_col = get_menu_cols(df_menu)
-    has_class_col = '班級' in df_menu.columns
     target_class = str(target_class).strip()
 
     for _, row in df_menu.iterrows():
@@ -251,13 +241,6 @@ def get_class_pr_data(df_menu, target_class):
         file_url = str(row.get(url_col, '')).strip()
         if not file_url or file_url == 'nan':
             continue
-
-        # 班級欄篩選（如果主控表有「班級」欄）
-        if has_class_col:
-            row_class = str(row.get('班級', '')).strip()
-            # 支援模糊比對：'01' 能比對到 '701'、'801'
-            if not (row_class.endswith(target_class) or row_class == target_class or target_class.endswith(row_class)):
-                continue
 
         df_exam = load_data(file_url)
         if df_exam is None or '座號' not in df_exam.columns:
@@ -300,20 +283,25 @@ def get_class_pr_data(df_menu, target_class):
                 continue
 
             if is_5digit:
-                # 5位數學號：從學號比對班級
                 full_id_str = str(int(seat_val))
                 if len(full_id_str) < 4:
                     continue
-                class_part = full_id_str[:-2]  # e.g. '701' from '70101'
+                class_part = full_id_str[:-2]  # 例如 '701'
                 seat_id = int(full_id_str[-2:])
-                if not (class_part.endswith(target_class) or class_part == target_class):
+                
+                # 🌟 修復 701/801 班級判斷邏輯
+                is_match = False
+                if class_part == target_class:
+                    is_match = True
+                elif len(class_part) >= 3 and class_part[-2:] == target_class.zfill(2):
+                    is_match = True
+                    
+                if not is_match:
                     continue
                 student_key = full_id_str
             else:
-                # 班內座號：直接用座號+班級組合作為學生識別
                 seat_id = int(seat_val)
-                class_label = row.get('班級', target_class) if has_class_col else target_class
-                student_key = f"{class_label}_{seat_id:02d}"
+                student_key = f"{target_class}_{seat_id:02d}"
 
             all_data.append({
                 '學生識別碼': student_key,
@@ -342,7 +330,7 @@ def get_class_pr_data(df_menu, target_class):
     df_mean['自然預估'] = df_mean['自然PR'].apply(pr_to_level)
     df_mean['社會預估'] = df_mean['社會PR'].apply(pr_to_level)
     df_mean['綜合預估'] = df_mean['五科總PR平均'].apply(pr_to_level)
-    df_mean = df_mean.sort_values('座號').reset_index(drop=True)
+    df_mean = df_mean.sort_values('學生識別碼').reset_index(drop=True)
     return df_mean
 
 
@@ -409,7 +397,6 @@ LEVEL_COLOR_MAP = {
     'C':   colors.Color(0.85, 0.2, 0.2),
 }
 
-# 全國會考各等級對應說明（依教育部公告）
 GSAT_REFERENCE = [
     ["等級", "PR 範圍", "意義說明"],
     ["A++", "PR 91~99", "全國前 9%，高度精熟"],
@@ -422,9 +409,7 @@ GSAT_REFERENCE = [
 ]
 
 def generate_pr_pdf(df_mean, class_name=""):
-    """產生全班會考預估落點 PDF，每頁含班級總表 + 全國對照說明"""
     try:
-        # 註冊中文字體
         font_path = "NotoSansTC-Regular.ttf"
         if os.path.exists(font_path):
             pdfmetrics.registerFont(TTFont("NotoSans", font_path))
@@ -448,27 +433,21 @@ def generate_pr_pdf(df_mean, class_name=""):
                                      textColor=colors.grey)
 
         story = []
-
-        # --- 標題 ---
         story.append(Paragraph(f"{'  ' + class_name + '  ' if class_name else ''}會考預估落點分析報告", title_style))
         story.append(Paragraph("根據歷次段考 PR 值加權平均推估・僅供參考", sub_style))
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#1a3a5c')))
         story.append(Spacer(1, 0.3*cm))
 
-        # --- 全班總表 ---
         story.append(Paragraph("▌ 全班各科預估落點總表", head_style))
 
         subs = ['國文', '英文', '數學', '自然', '社會']
         pr_cols = ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']
         lv_cols = ['國文預估', '英文預估', '數學預估', '自然預估', '社會預估']
 
-        table_data = [["座號", "姓名", "國文", "英文", "數學", "自然", "社會", "綜合
-預估", "五科
-平均PR"]]
+        table_data = [["座號", "姓名", "國文", "英文", "數學", "自然", "社會", "綜合\n預估", "五科\n平均PR"]]
         for _, r in df_mean.iterrows():
             def fmt_pr(v, lv):
-                return f"{v:.0f}
-({lv})" if pd.notna(v) else "-"
+                return f"{v:.0f}\n({lv})" if pd.notna(v) else "-"
             row_data = [
                 str(int(r['座號'])) if pd.notna(r['座號']) else '-',
                 str(r.get('姓名', '')),
@@ -499,13 +478,12 @@ def generate_pr_pdf(df_mean, class_name=""):
             ('TOPPADDING',  (0,0), (-1,-1), 4),
             ('BOTTOMPADDING',(0,0), (-1,-1), 4),
         ])
-        # 依等級著色
         level_bg = {
             'A++': colors.HexColor('#C6EFCE'), 'A+': colors.HexColor('#C6EFCE'), 'A': colors.HexColor('#C6EFCE'),
             'B++': colors.HexColor('#FFEB9C'), 'B+': colors.HexColor('#FFEB9C'), 'B': colors.HexColor('#FFEB9C'),
             'C':   colors.HexColor('#FFC7CE'),
         }
-        lv_col_indices = [2, 3, 4, 5, 6, 7]  # 國文~社會+綜合
+        lv_col_indices = [2, 3, 4, 5, 6, 7]
         lv_df_cols = lv_cols + ['綜合預估']
         for i, r in enumerate(df_mean.itertuples(), start=1):
             for ci, lv_col in zip(lv_col_indices, lv_df_cols):
@@ -518,7 +496,6 @@ def generate_pr_pdf(df_mean, class_name=""):
         story.append(t)
         story.append(Spacer(1, 0.5*cm))
 
-        # --- 全國會考等級對照表 ---
         story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
         story.append(Paragraph("▌ 全國教育會考等級對照說明", head_style))
 
@@ -612,7 +589,6 @@ def fetch_student_history(df_menu, seat_num):
         else:
             df_stud['社會_融合'] = df_stud['社會']
 
-        # BUG FIX: 不用 fillna(0)，只對有值的欄位計算 PR
         for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
             col_pr = f'{sub}_PR'
             df_stud[col_pr] = np.nan
@@ -622,7 +598,6 @@ def fetch_student_history(df_menu, seat_num):
                     df_stud.loc[valid_mask, sub].rank(pct=True) * 100
                 )
 
-        # 總分與名次只算有成績的科目
         score_cols = ['國文', '英文', '數學', '自然', '社會_融合']
         df_stud['總分_calc'] = df_stud[score_cols].sum(axis=1, min_count=1)
         df_stud['名次_calc'] = df_stud['總分_calc'].rank(ascending=False, method='min')
@@ -720,7 +695,6 @@ if df_menu is None:
     st.error("❌ 無法載入您的主控總表，請確認網址權限設定。")
     st.stop()
 
-# BUG FIX: 將 student_seats 初始化在最外層，避免 tab2/tab3 找不到變數
 student_seats = []
 df_students = pd.DataFrame()
 
@@ -770,7 +744,6 @@ with tab1:
             if col not in df_bottom.columns:
                 df_bottom[col] = np.nan
 
-        # BUG FIX: 更健壯的統計列解析，同時檢查座號與姓名欄位
         for _, brow in df_bottom.iterrows():
             seat_str = str(brow.get('座號', '')).strip()
             name_str = str(brow.get('姓名', '')).strip()
@@ -792,7 +765,6 @@ with tab1:
             radar_subs = ['國文', '英文', '數學', '自然', '社會']
             df_students['社會_融合'] = df_students['社會']
 
-        # BUG FIX: 計算總分/名次時不強制填 0，用 min_count 保留 NaN 語意
         score_cols = ['國文', '英文', '數學', '自然', '社會_融合']
         df_students['總分_calc'] = df_students[score_cols].sum(axis=1, min_count=1)
         df_students['總PR_calc'] = df_students['總分_calc'].rank(pct=True) * 100
@@ -808,7 +780,6 @@ with tab1:
                 )
 
         df_students = df_students.sort_values(by='座號').reset_index(drop=True)
-        # BUG FIX: 更新外層 student_seats，讓 tab2/tab3 可以使用
         student_seats = sorted(df_students[df_students['座號'] > 0]['座號'].tolist())
 
         if st.session_state.role == "teacher":
@@ -852,7 +823,6 @@ with tab1:
 
 with tab2:
     st.markdown("### 📊 學生歷史跨學期趨勢追蹤")
-    # BUG FIX: student_seats 現在在外層定義，這裡一定存在
     if not student_seats:
         st.info("請先在「單次段考詳細成績」分頁選擇考試，載入學生名單後再來這裡分析。")
     else:
@@ -928,12 +898,23 @@ with tab3:
                 df_pr, excel_pr = generate_pr_report_excel(df_menu, target_class)
                 if df_pr is not None and not df_pr.empty:
                     st.success(f"✅ 成功結算符合 {target_class} 的學生共 {len(df_pr)} 位落點！")
+                    
                     st.download_button(
                         label=f"📥 下載【{target_class}班會考預估落點 Excel】",
                         data=excel_pr,
                         file_name=f"班級{target_class}_會考預估落點總表.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
+                    
+                    pdf_data = generate_pr_pdf(df_pr, class_name=target_class)
+                    if pdf_data:
+                        st.download_button(
+                            label=f"📄 下載【{target_class}班會考預估落點 PDF】",
+                            data=pdf_data,
+                            file_name=f"班級{target_class}_會考預估落點報告.pdf",
+                            mime="application/pdf"
+                        )
+                    
                     st.dataframe(df_pr)
                 else:
                     st.error(f"❌ 找不到包含代碼 '{target_class}' 的班級資料。")
@@ -960,7 +941,5 @@ with tab3:
                     total_pr = pd.Series(list(my_pr.values())).mean()
                     if pd.notna(total_pr):
                         st.info(f"✨ **你的五科綜合預估落點：{pr_to_level(total_pr)}** (總平均 PR: {total_pr:.1f})")
-                else:
-                    st.warning("目前還沒有足夠的歷史資料來為你進行分析喔！")
             else:
                 st.warning("⚠️ 請先在第一個分頁選擇含有你的座號的考試，再進行落點分析。")
