@@ -3,10 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import io
 from matplotlib import font_manager
-from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, Border, Side
 
 st.set_page_config(page_title="801 專屬成績大數據主控台", layout="centered", page_icon="🎓")
 
@@ -63,123 +60,7 @@ def check_is_grade_2_or_3(exam_name):
     return False
 
 # ==========================================
-# 區塊 3: 導師專屬 ─ 跨學期全班總平均 Excel 產生器
-# ==========================================
-def generate_semester_average_excel(df_menu):
-    all_data = []
-    
-    for _, row in df_menu.iterrows():
-        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
-        file_url = str(row['該次成績單的 Google 試算表網址']).strip()
-        
-        df_exam = load_data(file_url)
-        if df_exam is not None:
-            if '座號' not in df_exam.columns:
-                continue
-                
-            df_exam['_is_student'] = pd.to_numeric(df_exam['座號'], errors='coerce').notna()
-            df_stud = df_exam[df_exam['_is_student']].copy()
-            
-            is_grade_2_3 = check_is_grade_2_or_3(exam_name)
-            
-            for _, s_row in df_stud.iterrows():
-                seat = int(pd.to_numeric(s_row.get('座號'), errors='coerce'))
-                name = str(s_row.get('姓名', '')).strip()
-                
-                # 絕對安全寫法：使用 .get() 容錯，若缺考或無此學科欄位則自動帶入 NaN
-                record = {
-                    '座號': seat,
-                    '姓名': name,
-                    '國文': pd.to_numeric(s_row.get('國文', np.nan), errors='coerce'),
-                    '英文': pd.to_numeric(s_row.get('英文', np.nan), errors='coerce'),
-                    '數學': pd.to_numeric(s_row.get('數學', np.nan), errors='coerce'),
-                    '自然': pd.to_numeric(s_row.get('自然', np.nan), errors='coerce')
-                }
-                
-                if is_grade_2_3:
-                    his = pd.to_numeric(s_row.get('歷史', np.nan), errors='coerce')
-                    geo = pd.to_numeric(s_row.get('地理', np.nan), errors='coerce')
-                    civ = pd.to_numeric(s_row.get('公民', np.nan), errors='coerce')
-                    record['歷史'] = his
-                    record['地理'] = geo
-                    record['公民'] = civ
-                    if pd.notna(his) and pd.notna(geo) and pd.notna(civ):
-                        record['社會_融合'] = (his + geo + civ) / 3
-                    else:
-                        record['社會_融合'] = np.nan
-                else:
-                    soc = pd.to_numeric(s_row.get('社會', np.nan), errors='coerce')
-                    record['社會_融合'] = soc
-                    record['歷史'] = soc
-                    record['地理'] = soc
-                    record['公民'] = soc
-                    
-                all_data.append(record)
-                
-    if not all_data:
-        return None
-        
-    df_all = pd.DataFrame(all_data)
-    
-    # 進行全班分組平均計算
-    df_mean = df_all.groupby(['座號', '姓名']).mean(numeric_only=True).reset_index()
-    
-    # 確保所有必備欄位均存在於結果中
-    for col in ['國文', '英文', '數學', '自然', '社會_融合', '歷史', '地理', '公民']:
-        if col not in df_mean.columns:
-            df_mean[col] = np.nan
-            
-    # 計算會考標準五科總和平均
-    df_mean['五科總平均'] = (df_mean['國文'].fillna(0) + df_mean['英文'].fillna(0) + 
-                          df_mean['數學'].fillna(0) + df_mean['自然'].fillna(0) + 
-                          df_mean['社會_融合'].fillna(0)) / 5
-                          
-    mask_all_na = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].isna().all(axis=1)
-    df_mean.loc[mask_all_na, '五科總平均'] = np.nan
-    
-    df_mean = df_mean.sort_values('座號')
-    
-    # 產出 Excel 結構
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "全班學期總平均"
-    
-    headers = ["座號", "姓名", "國文平均", "英文平均", "數學平均", "自然平均", "社會(融合)平均", "歷史平均", "地理平均", "公民平均", "五科總和平均"]
-    ws.append(headers)
-    
-    for _, r in df_mean.iterrows():
-        row_data = [
-            r['座號'], r['姓名'],
-            round(r['國文'], 2) if pd.notna(r['國文']) else "",
-            round(r['英文'], 2) if pd.notna(r['英文']) else "",
-            round(r['數學'], 2) if pd.notna(r['數學']) else "",
-            round(r['自然'], 2) if pd.notna(r['自然']) else "",
-            round(r['社會_融合'], 2) if pd.notna(r['社會_融合']) else "",
-            round(r['歷史'], 2) if pd.notna(r['歷史']) else "",
-            round(r['地理'], 2) if pd.notna(r['地理']) else "",
-            round(r['公民'], 2) if pd.notna(r['公民']) else "",
-            round(r['五科總平均'], 2) if pd.notna(r['五科總平均']) else ""
-        ]
-        ws.append(row_data)
-        
-    # 設定框線與格式
-    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=11):
-        for cell in row:
-            cell.border = thin_border
-            cell.alignment = Alignment(horizontal="center", vertical="center")
-            if cell.row == 1:
-                cell.font = Font(bold=True)
-                
-    for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].width = 12
-                
-    out = io.BytesIO()
-    wb.save(out)
-    return out.getvalue()
-
-# ==========================================
-# 區塊 4: 雷達圖產生器 & 歷史數據撈取
+# 區塊 3: 雷達圖產生器 & 歷史數據撈取
 # ==========================================
 def draw_web_radar_chart(labels, pr_scores):
     pr_scores = [0 if pd.isna(x) else x for x in pr_scores]
@@ -259,7 +140,7 @@ def fetch_student_history(df_menu, seat_num):
     return pd.DataFrame(history_records)
 
 # ==========================================
-# 區塊 5: 登入介面邏輯
+# 區塊 4: 登入介面邏輯
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔐 801 專屬成績系統 - 登入")
@@ -287,6 +168,7 @@ if not st.session_state.logged_in:
             try:
                 seat_num = int(username)
                 user_key = f"{login_role}_{seat_num}"
+                # 從暫存抓取更改過的密碼，若無則預設為座號字串
                 expected_password = st.session_state.passwords.get(user_key, str(seat_num))
                 
                 if password == expected_password:
@@ -298,11 +180,12 @@ if not st.session_state.logged_in:
                     st.error("❌ 密碼錯誤！")
             except ValueError:
                 st.error("❌ 學生或家長帳號請輸入純數字座號！")
-    st.stop()
+    st.stop() # 阻擋未登入者往下看內容
 
 # ==========================================
-# 區塊 6: 系統主介面 (登入後)
+# 區塊 5: 系統主介面 (登入後)
 # ==========================================
+# 頂部狀態列
 col_title, col_logout = st.columns([0.8, 0.2])
 with col_title:
     st.title("🎓 801 專屬成績大數據主控台")
@@ -315,6 +198,7 @@ with col_logout:
         st.session_state.user_id = None
         st.rerun()
 
+# 學生與家長修改密碼功能
 if st.session_state.role != "teacher":
     with st.expander("🔑 修改個人密碼"):
         new_pass = st.text_input("請輸入新密碼：", type="password")
@@ -329,29 +213,12 @@ if st.session_state.role != "teacher":
 
 st.markdown("---")
 
+# 固定鎖定總表網址
 MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAijJICjHzPxJLcPIEngF0wko8/edit?gid=0#gid=0"
+
 df_menu = load_data(MASTER_MENU_URL)
 
 if df_menu is not None:
-    # 🌟 導師專屬：全班總平均結算區塊
-    if st.session_state.role == "teacher":
-        with st.expander("📊 導師專屬功能：匯出全班學期各科總平均 Excel", expanded=True):
-            st.write("點擊下方按鈕，系統將自動讀取主控台內的所有段考成績，計算全班每位學生的「各科跨學期平均」與「五科總平均」。")
-            if st.button("🚀 結算並匯出全班總表", type="primary"):
-                with st.spinner("正在結算各次段考數據中，請稍候..."):
-                    excel_data = generate_semester_average_excel(df_menu)
-                    if excel_data:
-                        st.success("✅ 全班學期總平均計算完成！")
-                        st.download_button(
-                            label="📥 點我下載【全班各科總平均 Excel】",
-                            data=excel_data,
-                            file_name="801_全班學期各科總平均.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                    else:
-                        st.error("❌ 運算失敗，請確認主控台內是否有成績資料。")
-        st.markdown("---")
-
     if '考試檔案名稱或別名' in df_menu.columns:
         exam_options = df_menu['考試檔案名稱或別名'].dropna().tolist()
     else:
@@ -432,6 +299,7 @@ if df_menu is not None:
             df_students = df_students.sort_values(by='座號').reset_index(drop=True)
             student_seats = sorted(df_students[df_students['座號'] > 0]['座號'].tolist())
             
+            # 權限分級控制核心
             if st.session_state.role == "teacher":
                 selected_seat = st.selectbox("🔢 請選擇要查詢的座號：", student_seats, key="student_seat")
             else:
