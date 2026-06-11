@@ -3,10 +3,10 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-import io # 新增：用來產出 Excel 檔
-from openpyxl import Workbook # 新增：用來產出 Excel 檔
-from openpyxl.styles import Alignment, Font, Border, Side # 新增：用來產出 Excel 檔
+import io
 from matplotlib import font_manager
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, Border, Side
 
 st.set_page_config(page_title="801 專屬成績大數據主控台", layout="centered", page_icon="🎓")
 
@@ -63,7 +63,7 @@ def check_is_grade_2_or_3(exam_name):
     return False
 
 # ==========================================
-# 🌟 外掛新增：導師專屬 ─ 跨學期全班總平均 Excel 產生器 (獨立且防彈)
+# 區塊 3: 導師專屬 ─ 跨學期全班總平均 Excel 產生器
 # ==========================================
 def generate_semester_average_excel(df_menu):
     all_data = []
@@ -80,26 +80,32 @@ def generate_semester_average_excel(df_menu):
             df_exam['_is_student'] = pd.to_numeric(df_exam['座號'], errors='coerce').notna()
             df_stud = df_exam[df_exam['_is_student']].copy()
             
+            # 🌟 【絕對防彈】在讀取每筆資料前，強制補齊所有可能用到的科目！
+            # 這樣後續存取 s_row['自然'] 時，物理上絕對不可能再發生 KeyError！
+            for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
+                if col not in df_stud.columns:
+                    df_stud[col] = np.nan
+            
             is_grade_2_3 = check_is_grade_2_or_3(exam_name)
             
             for _, s_row in df_stud.iterrows():
-                seat = int(pd.to_numeric(s_row.get('座號'), errors='coerce'))
-                name = str(s_row.get('姓名', '')).strip()
+                seat = int(pd.to_numeric(s_row['座號'], errors='coerce'))
+                name = str(s_row['姓名']).strip()
                 
-                # 安全抓取法：沒有這個科目就自動給 NaN，絕對不報 KeyError
+                # 直接安全取值，因為欄位已經被我們強制生出來了
                 record = {
                     '座號': seat,
                     '姓名': name,
-                    '國文': pd.to_numeric(s_row.get('國文', np.nan), errors='coerce'),
-                    '英文': pd.to_numeric(s_row.get('英文', np.nan), errors='coerce'),
-                    '數學': pd.to_numeric(s_row.get('數學', np.nan), errors='coerce'),
-                    '自然': pd.to_numeric(s_row.get('自然', np.nan), errors='coerce')
+                    '國文': pd.to_numeric(s_row['國文'], errors='coerce'),
+                    '英文': pd.to_numeric(s_row['英文'], errors='coerce'),
+                    '數學': pd.to_numeric(s_row['數學'], errors='coerce'),
+                    '自然': pd.to_numeric(s_row['自然'], errors='coerce')
                 }
                 
                 if is_grade_2_3:
-                    his = pd.to_numeric(s_row.get('歷史', np.nan), errors='coerce')
-                    geo = pd.to_numeric(s_row.get('地理', np.nan), errors='coerce')
-                    civ = pd.to_numeric(s_row.get('公民', np.nan), errors='coerce')
+                    his = pd.to_numeric(s_row['歷史'], errors='coerce')
+                    geo = pd.to_numeric(s_row['地理'], errors='coerce')
+                    civ = pd.to_numeric(s_row['公民'], errors='coerce')
                     record['歷史'] = his
                     record['地理'] = geo
                     record['公民'] = civ
@@ -108,7 +114,7 @@ def generate_semester_average_excel(df_menu):
                     else:
                         record['社會_融合'] = np.nan
                 else:
-                    soc = pd.to_numeric(s_row.get('社會', np.nan), errors='coerce')
+                    soc = pd.to_numeric(s_row['社會'], errors='coerce')
                     record['社會_融合'] = soc
                     record['歷史'] = soc
                     record['地理'] = soc
@@ -120,24 +126,26 @@ def generate_semester_average_excel(df_menu):
         return None
         
     df_all = pd.DataFrame(all_data)
-    # 分組平均
+    
+    # 進行全班分組平均計算
     df_mean = df_all.groupby(['座號', '姓名']).mean(numeric_only=True).reset_index()
     
-    # 確保所有必備欄位都在，避免後續出錯
+    # 確保所有必備欄位均存在於結果中
     for col in ['國文', '英文', '數學', '自然', '社會_融合', '歷史', '地理', '公民']:
         if col not in df_mean.columns:
             df_mean[col] = np.nan
             
-    # 計算五科總平均 (遇到空值自動略過不破壞計算)
-    df_mean['五科總平均'] = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].mean(axis=1)
-    
-    # 若五科全沒成績則給空值
+    # 計算會考標準五科總和平均
+    df_mean['五科總平均'] = (df_mean['國文'].fillna(0) + df_mean['英文'].fillna(0) + 
+                          df_mean['數學'].fillna(0) + df_mean['自然'].fillna(0) + 
+                          df_mean['社會_融合'].fillna(0)) / 5
+                          
     mask_all_na = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].isna().all(axis=1)
     df_mean.loc[mask_all_na, '五科總平均'] = np.nan
     
     df_mean = df_mean.sort_values('座號')
     
-    # 產出 Excel
+    # 產出 Excel 結構
     wb = Workbook()
     ws = wb.active
     ws.title = "全班學期總平均"
@@ -160,6 +168,7 @@ def generate_semester_average_excel(df_menu):
         ]
         ws.append(row_data)
         
+    # 設定框線與格式
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=11):
         for cell in row:
@@ -176,7 +185,7 @@ def generate_semester_average_excel(df_menu):
     return out.getvalue()
 
 # ==========================================
-# 區塊 3: 雷達圖產生器 & 歷史數據撈取
+# 區塊 4: 雷達圖產生器 & 歷史數據撈取
 # ==========================================
 def draw_web_radar_chart(labels, pr_scores):
     pr_scores = [0 if pd.isna(x) else x for x in pr_scores]
@@ -256,7 +265,7 @@ def fetch_student_history(df_menu, seat_num):
     return pd.DataFrame(history_records)
 
 # ==========================================
-# 區塊 4: 登入介面邏輯
+# 區塊 5: 登入介面邏輯
 # ==========================================
 if not st.session_state.logged_in:
     st.title("🔐 801 專屬成績系統 - 登入")
@@ -295,10 +304,10 @@ if not st.session_state.logged_in:
                     st.error("❌ 密碼錯誤！")
             except ValueError:
                 st.error("❌ 學生或家長帳號請輸入純數字座號！")
-    st.stop() # 阻擋未登入者往下看內容
+    st.stop()
 
 # ==========================================
-# 區塊 5: 系統主介面 (登入後)
+# 區塊 6: 系統主介面 (登入後)
 # ==========================================
 col_title, col_logout = st.columns([0.8, 0.2])
 with col_title:
