@@ -59,24 +59,24 @@ def load_data(url):
         df.columns = df.columns.astype(str).str.strip()
         df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
-        id_col = None
-        for col in df.columns:
-            vals = pd.to_numeric(df[col], errors='coerce')
-            if vals.notna().any() and ((vals >= 70000) & (vals <= 99999)).any():
-                id_col = col
-                break
-
-        if id_col and id_col != '座號':
-            df = df.rename(columns={id_col: '座號'})
-        elif '座號' not in df.columns and len(df.columns) > 0:
-            df = df.rename(columns={df.columns[0]: '座號'})
-
+        # 已有標準欄位名稱就直接用，不做任何 rename
         if '英語' in df.columns:
             df = df.rename(columns={'英語': '英文'})
         if '學號' in df.columns and '座號' not in df.columns:
             df = df.rename(columns={'學號': '座號'})
         if '班級座號' in df.columns and '座號' not in df.columns:
             df = df.rename(columns={'班級座號': '座號'})
+
+        # 只有在「沒有座號欄」的情況下，才嘗試自動偵測 5 位數學號欄
+        if '座號' not in df.columns:
+            id_col = None
+            for col in df.columns:
+                vals = pd.to_numeric(df[col], errors='coerce')
+                if vals.notna().any() and ((vals >= 70000) & (vals <= 99999)).any():
+                    id_col = col
+                    break
+            if id_col:
+                df = df.rename(columns={id_col: '座號'})
 
         return df
     except:
@@ -88,13 +88,20 @@ def check_is_grade_2_or_3(exam_name):
 # ==========================================
 # 區塊 3: 導師功能 (全校總平均)
 # ==========================================
+def get_menu_cols(df_menu):
+    """自動偵測主控表的考試名稱欄與網址欄"""
+    exam_col = '考試檔案名稱或別名' if '考試檔案名稱或別名' in df_menu.columns else '考試名稱'
+    url_col = '該次成績單的 Google 試算表網址' if '該次成績單的 Google 試算表網址' in df_menu.columns else df_menu.columns[1]
+    return exam_col, url_col
+
 def generate_semester_average_excel(df_menu):
     all_data = []
+    exam_col, url_col = get_menu_cols(df_menu)
 
     for _, row in df_menu.iterrows():
-        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
-        file_url = str(row.get('該次成績單的 Google 試算表網址', '')).strip()
-        if not file_url:
+        exam_name = str(row.get(exam_col, '')).strip()
+        file_url = str(row.get(url_col, '')).strip()
+        if not file_url or file_url == 'nan':
             continue
 
         df_exam = load_data(file_url)
@@ -201,11 +208,12 @@ def pr_to_level(pr):
 def generate_pr_report_excel(df_menu, target_class_code):
     all_data = []
     target_class_code = str(target_class_code).strip()
+    exam_col, url_col = get_menu_cols(df_menu)
 
     for _, row in df_menu.iterrows():
-        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
-        file_url = str(row.get('該次成績單的 Google 試算表網址', '')).strip()
-        if not file_url:
+        exam_name = str(row.get(exam_col, '')).strip()
+        file_url = str(row.get(url_col, '')).strip()
+        if not file_url or file_url == 'nan':
             continue
 
         df_exam = load_data(file_url)
@@ -344,10 +352,12 @@ def draw_web_radar_chart(labels, pr_scores):
 
 def fetch_student_history(df_menu, seat_num):
     history_records = []
+    exam_col, url_col = get_menu_cols(df_menu)
+
     for _, row in df_menu.iterrows():
-        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
-        file_url = str(row.get('該次成績單的 Google 試算表網址', '')).strip()
-        if not file_url:
+        exam_name = str(row.get(exam_col, '')).strip()
+        file_url = str(row.get(url_col, '')).strip()
+        if not file_url or file_url == 'nan':
             continue
 
         df_exam = load_data(file_url)
@@ -500,14 +510,14 @@ if st.session_state.role == "teacher":
                     st.error("❌ 運算失敗，請確認主控台內是否有成績資料。")
     st.markdown("---")
 
-exam_col = '考試檔案名稱或別名' if '考試檔案名稱或別名' in df_menu.columns else '考試名稱'
+exam_col, url_col = get_menu_cols(df_menu)
 exam_options = df_menu[exam_col].dropna().tolist()
 
 tab1, tab2, tab3 = st.tabs(["🔍 單次段考詳細成績", "📈 歷史軌跡動態分析", "🎯 會考落點預估 (PR分析)"])
 
 with tab1:
     selected_exam = st.selectbox("📅 請選擇要查看的考試項目：", exam_options, key="student_exam")
-    target_sheet_url = df_menu[df_menu[exam_col] == selected_exam]['該次成績單的 Google 試算表網址'].values[0]
+    target_sheet_url = df_menu[df_menu[exam_col] == selected_exam][url_col].values[0]
 
     has_7_subjects = check_is_grade_2_or_3(selected_exam)
     raw_df = load_data(target_sheet_url)
