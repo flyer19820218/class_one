@@ -59,7 +59,6 @@ def load_data(url):
         df.columns = df.columns.astype(str).str.strip()
         df = df.loc[:, ~df.columns.duplicated(keep='first')]
 
-        # 已有標準欄位名稱就直接用，不做任何 rename
         if '英語' in df.columns:
             df = df.rename(columns={'英語': '英文'})
         if '學號' in df.columns and '座號' not in df.columns:
@@ -67,20 +66,41 @@ def load_data(url):
         if '班級座號' in df.columns and '座號' not in df.columns:
             df = df.rename(columns={'班級座號': '座號'})
 
-        # 只有在「沒有座號欄」的情況下，才嘗試自動偵測 5 位數學號欄
         if '座號' not in df.columns:
             id_col = None
+            # 優先找 5 位數學號欄
             for col in df.columns:
                 vals = pd.to_numeric(df[col], errors='coerce')
                 if vals.notna().any() and ((vals >= 70000) & (vals <= 99999)).any():
                     id_col = col
                     break
+            # 找不到就找第一個含數字的欄（班內座號格式）
+            if not id_col:
+                for col in df.columns:
+                    vals = pd.to_numeric(df[col], errors='coerce')
+                    if vals.notna().sum() >= 3:
+                        id_col = col
+                        break
             if id_col:
                 df = df.rename(columns={id_col: '座號'})
 
         return df
     except:
         return None
+
+def get_student_mask(df):
+    """相容兩種座號格式：5位數學號(70000+) 或 班內座號(1-60)"""
+    if '座號' not in df.columns:
+        return pd.Series([False] * len(df))
+    vals = pd.to_numeric(df['座號'], errors='coerce')
+    mask_5digit = (vals >= 70000) & (vals <= 99999)
+    mask_class = (vals >= 1) & (vals <= 60) & (vals == vals.round())
+    stat_keywords = ['高標', '平均', '均標', '低標', '總計', '人數', '班平']
+    if '姓名' in df.columns:
+        is_stat = df['姓名'].astype(str).str.contains('|'.join(stat_keywords), na=False)
+    else:
+        is_stat = pd.Series([False] * len(df))
+    return (mask_5digit | mask_class) & vals.notna() & ~is_stat
 
 def check_is_grade_2_or_3(exam_name):
     return any(keyword in str(exam_name) for keyword in ["二上", "二下", "三上", "三下"])
@@ -108,8 +128,7 @@ def generate_semester_average_excel(df_menu):
         if df_exam is None or '座號' not in df_exam.columns:
             continue
 
-        seat_vals = pd.to_numeric(df_exam['座號'], errors='coerce')
-        df_stud = df_exam[(seat_vals >= 70000) & seat_vals.notna()].copy()
+        df_stud = df_exam[get_student_mask(df_exam)].copy()
         is_grade_2_3 = check_is_grade_2_or_3(exam_name)
 
         for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
@@ -220,8 +239,7 @@ def generate_pr_report_excel(df_menu, target_class_code):
         if df_exam is None or '座號' not in df_exam.columns:
             continue
 
-        seat_vals = pd.to_numeric(df_exam['座號'], errors='coerce')
-        df_stud = df_exam[(seat_vals >= 70000) & seat_vals.notna()].copy()
+        df_stud = df_exam[get_student_mask(df_exam)].copy()
         is_grade_2_3 = check_is_grade_2_or_3(exam_name)
 
         for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
@@ -364,8 +382,7 @@ def fetch_student_history(df_menu, seat_num):
         if df_exam is None or '座號' not in df_exam.columns:
             continue
 
-        seat_vals = pd.to_numeric(df_exam['座號'], errors='coerce')
-        df_stud = df_exam[(seat_vals >= 70000) & seat_vals.notna()].copy()
+        df_stud = df_exam[get_student_mask(df_exam)].copy()
         df_stud['座號'] = pd.to_numeric(df_stud['座號'], errors='coerce').astype(int)
         is_grade_2_3 = check_is_grade_2_or_3(exam_name)
 
@@ -523,10 +540,10 @@ with tab1:
     raw_df = load_data(target_sheet_url)
 
     if raw_df is not None and '座號' in raw_df.columns:
-        seat_vals = pd.to_numeric(raw_df['座號'], errors='coerce')
-        df_students = raw_df[(seat_vals >= 70000) & seat_vals.notna()].copy()
+        student_mask = get_student_mask(raw_df)
+        df_students = raw_df[student_mask].copy()
         df_students['座號'] = pd.to_numeric(df_students['座號'], errors='coerce').astype(int)
-        df_bottom = raw_df[~((seat_vals >= 70000) & seat_vals.notna())].copy()
+        df_bottom = raw_df[~student_mask].copy()
 
         stats_dict = {}
         cols_to_extract = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
