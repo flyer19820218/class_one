@@ -8,6 +8,13 @@ import re
 from matplotlib import font_manager
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, Border, Side
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 st.set_page_config(page_title="801 專屬成績大數據主控台", layout="centered", page_icon="🎓")
 
@@ -222,12 +229,22 @@ def pr_to_level(pr):
 
 
 # ==========================================
-# BUG FIX: 欄位命名一致性修正
+# 核心：從主控表撈取指定班級的跨學期 PR 平均
+# 支援兩種座號格式：5位數學號 或 班內座號
+# 主控表需有「班級」欄（填 701、801 等）
 # ==========================================
-def generate_pr_report_excel(df_menu, target_class_code):
+def get_class_pr_data(df_menu, target_class):
+    """
+    target_class: 班級代碼字串，例如 '801' 或 '1'（末尾班號）
+    回傳 DataFrame，每列是一位學生，欄位含各科PR平均
+    支援：
+      - 5位數學號模式（70101）：從學號後3碼比對班級
+      - 班內座號模式（1~35）：主控表需有「班級」欄指定每份成績屬於哪班
+    """
     all_data = []
-    target_class_code = str(target_class_code).strip()
     exam_col, url_col = get_menu_cols(df_menu)
+    has_class_col = '班級' in df_menu.columns
+    target_class = str(target_class).strip()
 
     for _, row in df_menu.iterrows():
         exam_name = str(row.get(exam_col, '')).strip()
@@ -235,11 +252,21 @@ def generate_pr_report_excel(df_menu, target_class_code):
         if not file_url or file_url == 'nan':
             continue
 
+        # 班級欄篩選（如果主控表有「班級」欄）
+        if has_class_col:
+            row_class = str(row.get('班級', '')).strip()
+            # 支援模糊比對：'01' 能比對到 '701'、'801'
+            if not (row_class.endswith(target_class) or row_class == target_class or target_class.endswith(row_class)):
+                continue
+
         df_exam = load_data(file_url)
         if df_exam is None or '座號' not in df_exam.columns:
             continue
 
         df_stud = df_exam[get_student_mask(df_exam)].copy()
+        if df_stud.empty:
+            continue
+
         is_grade_2_3 = check_is_grade_2_or_3(exam_name)
 
         for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
@@ -254,7 +281,7 @@ def generate_pr_report_excel(df_menu, target_class_code):
         else:
             df_stud['社會_融合'] = df_stud['社會']
 
-        # BUG FIX: 只對有值的學生計算 PR，避免 NaN 被當 0 計入
+        # 計算各科 PR（只對有成績的學生）
         for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
             col_pr = f'{sub}_PR'
             df_stud[col_pr] = np.nan
@@ -264,47 +291,70 @@ def generate_pr_report_excel(df_menu, target_class_code):
                     df_stud.loc[valid_mask, sub].rank(pct=True) * 100
                 )
 
+        seat_vals = pd.to_numeric(df_stud['座號'], errors='coerce')
+        is_5digit = (seat_vals >= 70000).any()
+
         for _, s_row in df_stud.iterrows():
             seat_val = pd.to_numeric(s_row.get('座號'), errors='coerce')
             if pd.isna(seat_val):
                 continue
-            full_id_str = str(int(seat_val))
-            if len(full_id_str) < 4:
-                continue
-            class_id = full_id_str[:-2]
-            seat_id = int(full_id_str[-2:])
-            if class_id.endswith(target_class_code) or class_id == target_class_code:
-                all_data.append({
-                    '學號': full_id_str, '座號': seat_id,
-                    '姓名': str(s_row.get('姓名', '')).strip(),
-                    '國文PR': s_row.get('國文_PR', np.nan),
-                    '英文PR': s_row.get('英文_PR', np.nan),
-                    '數學PR': s_row.get('數學_PR', np.nan),
-                    '自然PR': s_row.get('自然_PR', np.nan),
-                    '社會PR': s_row.get('社會_融合_PR', np.nan),
-                })
+
+            if is_5digit:
+                # 5位數學號：從學號比對班級
+                full_id_str = str(int(seat_val))
+                if len(full_id_str) < 4:
+                    continue
+                class_part = full_id_str[:-2]  # e.g. '701' from '70101'
+                seat_id = int(full_id_str[-2:])
+                if not (class_part.endswith(target_class) or class_part == target_class):
+                    continue
+                student_key = full_id_str
+            else:
+                # 班內座號：直接用座號+班級組合作為學生識別
+                seat_id = int(seat_val)
+                class_label = row.get('班級', target_class) if has_class_col else target_class
+                student_key = f"{class_label}_{seat_id:02d}"
+
+            all_data.append({
+                '學生識別碼': student_key,
+                '座號': seat_id,
+                '姓名': str(s_row.get('姓名', '')).strip(),
+                '國文PR': s_row.get('國文_PR', np.nan),
+                '英文PR': s_row.get('英文_PR', np.nan),
+                '數學PR': s_row.get('數學_PR', np.nan),
+                '自然PR': s_row.get('自然_PR', np.nan),
+                '社會PR': s_row.get('社會_融合_PR', np.nan),
+                '考試名稱': exam_name,
+            })
 
     if not all_data:
-        return None, None
+        return pd.DataFrame()
 
     df_all = pd.DataFrame(all_data)
-    df_mean = df_all.groupby(['學號', '座號', '姓名']).mean(numeric_only=True).reset_index()
-    df_mean['五科總PR平均'] = df_mean[['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']].mean(axis=1)
+    df_mean = df_all.groupby(['學生識別碼', '座號', '姓名'])[
+        ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']
+    ].mean().reset_index()
 
-    # BUG FIX: 直接用明確的欄位名，不用字串取代
+    df_mean['五科總PR平均'] = df_mean[['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']].mean(axis=1)
     df_mean['國文預估'] = df_mean['國文PR'].apply(pr_to_level)
     df_mean['英文預估'] = df_mean['英文PR'].apply(pr_to_level)
     df_mean['數學預估'] = df_mean['數學PR'].apply(pr_to_level)
     df_mean['自然預估'] = df_mean['自然PR'].apply(pr_to_level)
     df_mean['社會預估'] = df_mean['社會PR'].apply(pr_to_level)
     df_mean['綜合預估'] = df_mean['五科總PR平均'].apply(pr_to_level)
+    df_mean = df_mean.sort_values('座號').reset_index(drop=True)
+    return df_mean
 
-    df_mean = df_mean.sort_values('學號')
+
+def generate_pr_report_excel(df_menu, target_class):
+    df_mean = get_class_pr_data(df_menu, target_class)
+    if df_mean.empty:
+        return None, None
 
     wb = Workbook()
     ws = wb.active
     ws.title = "會考預估落點"
-    headers = ["班級座號(學號)", "姓名",
+    headers = ["學生識別碼", "座號", "姓名",
                "國文PR", "國文預估", "英文PR", "英文預估",
                "數學PR", "數學預估", "自然PR", "自然預估",
                "社會PR", "社會預估", "五科平均PR", "綜合預估等級"]
@@ -312,9 +362,9 @@ def generate_pr_report_excel(df_menu, target_class_code):
 
     for _, r in df_mean.iterrows():
         def fmt(v):
-            return round(v, 2) if pd.notna(v) else ""
+            return round(float(v), 2) if pd.notna(v) else ""
         ws.append([
-            r.get('學號', ''), r.get('姓名', ''),
+            r.get('學生識別碼', ''), r.get('座號', ''), r.get('姓名', ''),
             fmt(r.get('國文PR')), r.get('國文預估', ''),
             fmt(r.get('英文PR')), r.get('英文預估', ''),
             fmt(r.get('數學PR')), r.get('數學預估', ''),
@@ -325,19 +375,184 @@ def generate_pr_report_excel(df_menu, target_class_code):
 
     thin = Border(left=Side(style='thin'), right=Side(style='thin'),
                   top=Side(style='thin'), bottom=Side(style='thin'))
-    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=14):
+    level_colors = {'A++': 'C6EFCE', 'A+': 'C6EFCE', 'A': 'C6EFCE',
+                    'B++': 'FFEB9C', 'B+': 'FFEB9C', 'B': 'FFEB9C', 'C': 'FFC7CE'}
+    from openpyxl.styles import PatternFill
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
         for cell in row:
             cell.border = thin
             cell.alignment = Alignment(horizontal="center", vertical="center")
-            if cell.row == 1:
-                cell.font = Font(bold=True)
-
+            if cell.value in level_colors:
+                cell.fill = PatternFill("solid", fgColor=level_colors[cell.value])
+    for cell in ws[1]:
+        cell.border = thin
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = Font(bold=True)
     for col in ws.columns:
         ws.column_dimensions[col[0].column_letter].width = 13
 
     out = io.BytesIO()
     wb.save(out)
     return df_mean, out.getvalue()
+
+
+# ==========================================
+# PDF 輸出：全班會考預估落點報告
+# ==========================================
+LEVEL_COLOR_MAP = {
+    'A++': colors.Color(0.2, 0.7, 0.3),
+    'A+':  colors.Color(0.2, 0.7, 0.3),
+    'A':   colors.Color(0.2, 0.7, 0.3),
+    'B++': colors.Color(0.95, 0.75, 0.1),
+    'B+':  colors.Color(0.95, 0.75, 0.1),
+    'B':   colors.Color(0.95, 0.75, 0.1),
+    'C':   colors.Color(0.85, 0.2, 0.2),
+}
+
+# 全國會考各等級對應說明（依教育部公告）
+GSAT_REFERENCE = [
+    ["等級", "PR 範圍", "意義說明"],
+    ["A++", "PR 91~99", "全國前 9%，高度精熟"],
+    ["A+",  "PR 85~90", "全國前 15%，精熟"],
+    ["A",   "PR 75~84", "全國前 25%，達精熟"],
+    ["B++", "PR 60~74", "全國前 40%，基礎偏上"],
+    ["B+",  "PR 45~59", "全國前 55%，基礎"],
+    ["B",   "PR 15~44", "基礎程度"],
+    ["C",   "PR 14 以下", "待加強"],
+]
+
+def generate_pr_pdf(df_mean, class_name=""):
+    """產生全班會考預估落點 PDF，每頁含班級總表 + 全國對照說明"""
+    try:
+        # 註冊中文字體
+        font_path = "NotoSansTC-Regular.ttf"
+        if os.path.exists(font_path):
+            pdfmetrics.registerFont(TTFont("NotoSans", font_path))
+            font_name = "NotoSans"
+        else:
+            font_name = "Helvetica"
+
+        buf = io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4,
+                                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                                topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle('title', fontName=font_name, fontSize=16,
+                                     spaceAfter=6, alignment=1, textColor=colors.HexColor('#1a3a5c'))
+        sub_style  = ParagraphStyle('sub',   fontName=font_name, fontSize=10,
+                                     spaceAfter=4, alignment=1, textColor=colors.grey)
+        head_style = ParagraphStyle('head',  fontName=font_name, fontSize=12,
+                                     spaceBefore=12, spaceAfter=4, textColor=colors.HexColor('#1a3a5c'))
+        note_style = ParagraphStyle('note',  fontName=font_name, fontSize=8,
+                                     textColor=colors.grey)
+
+        story = []
+
+        # --- 標題 ---
+        story.append(Paragraph(f"{'  ' + class_name + '  ' if class_name else ''}會考預估落點分析報告", title_style))
+        story.append(Paragraph("根據歷次段考 PR 值加權平均推估・僅供參考", sub_style))
+        story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#1a3a5c')))
+        story.append(Spacer(1, 0.3*cm))
+
+        # --- 全班總表 ---
+        story.append(Paragraph("▌ 全班各科預估落點總表", head_style))
+
+        subs = ['國文', '英文', '數學', '自然', '社會']
+        pr_cols = ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']
+        lv_cols = ['國文預估', '英文預估', '數學預估', '自然預估', '社會預估']
+
+        table_data = [["座號", "姓名", "國文", "英文", "數學", "自然", "社會", "綜合
+預估", "五科
+平均PR"]]
+        for _, r in df_mean.iterrows():
+            def fmt_pr(v, lv):
+                return f"{v:.0f}
+({lv})" if pd.notna(v) else "-"
+            row_data = [
+                str(int(r['座號'])) if pd.notna(r['座號']) else '-',
+                str(r.get('姓名', '')),
+            ]
+            for pr_c, lv_c in zip(pr_cols, lv_cols):
+                pr_v = r.get(pr_c)
+                lv_v = r.get(lv_c, '')
+                row_data.append(fmt_pr(pr_v, lv_v))
+            row_data.append(str(r.get('綜合預估', '-')))
+            avg_pr = r.get('五科總PR平均')
+            row_data.append(f"{avg_pr:.1f}" if pd.notna(avg_pr) else '-')
+            table_data.append(row_data)
+
+        col_widths = [1.2*cm, 2.2*cm, 2.1*cm, 2.1*cm, 2.1*cm, 2.1*cm, 2.1*cm, 1.6*cm, 1.8*cm]
+        t = Table(table_data, colWidths=col_widths, repeatRows=1)
+
+        ts = TableStyle([
+            ('FONTNAME',    (0,0), (-1,-1), font_name),
+            ('FONTSIZE',    (0,0), (-1,-1), 8),
+            ('FONTSIZE',    (0,0), (-1, 0), 9),
+            ('FONTNAME',    (0,0), (-1, 0), font_name),
+            ('BACKGROUND',  (0,0), (-1, 0), colors.HexColor('#1a3a5c')),
+            ('TEXTCOLOR',   (0,0), (-1, 0), colors.white),
+            ('ALIGN',       (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN',      (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID',        (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#f0f4f8')]),
+            ('TOPPADDING',  (0,0), (-1,-1), 4),
+            ('BOTTOMPADDING',(0,0), (-1,-1), 4),
+        ])
+        # 依等級著色
+        level_bg = {
+            'A++': colors.HexColor('#C6EFCE'), 'A+': colors.HexColor('#C6EFCE'), 'A': colors.HexColor('#C6EFCE'),
+            'B++': colors.HexColor('#FFEB9C'), 'B+': colors.HexColor('#FFEB9C'), 'B': colors.HexColor('#FFEB9C'),
+            'C':   colors.HexColor('#FFC7CE'),
+        }
+        lv_col_indices = [2, 3, 4, 5, 6, 7]  # 國文~社會+綜合
+        lv_df_cols = lv_cols + ['綜合預估']
+        for i, r in enumerate(df_mean.itertuples(), start=1):
+            for ci, lv_col in zip(lv_col_indices, lv_df_cols):
+                lv = getattr(r, lv_col.replace(' ', '_'), '')
+                if lv in level_bg:
+                    ts.add('BACKGROUND', (ci, i), (ci, i), level_bg[lv])
+                    ts.add('TEXTCOLOR', (ci, i), (ci, i), colors.HexColor('#1a3a5c'))
+
+        t.setStyle(ts)
+        story.append(t)
+        story.append(Spacer(1, 0.5*cm))
+
+        # --- 全國會考等級對照表 ---
+        story.append(HRFlowable(width="100%", thickness=0.5, color=colors.grey))
+        story.append(Paragraph("▌ 全國教育會考等級對照說明", head_style))
+
+        ref_col_widths = [2*cm, 3*cm, 9*cm]
+        ref_table = Table(GSAT_REFERENCE, colWidths=ref_col_widths)
+        ref_ts = TableStyle([
+            ('FONTNAME',   (0,0), (-1,-1), font_name),
+            ('FONTSIZE',   (0,0), (-1,-1), 9),
+            ('BACKGROUND', (0,0), (-1, 0), colors.HexColor('#1a3a5c')),
+            ('TEXTCOLOR',  (0,0), (-1, 0), colors.white),
+            ('ALIGN',      (0,0), (-1,-1), 'CENTER'),
+            ('VALIGN',     (0,0), (-1,-1), 'MIDDLE'),
+            ('GRID',       (0,0), (-1,-1), 0.5, colors.grey),
+            ('TOPPADDING', (0,0), (-1,-1), 5),
+            ('BOTTOMPADDING',(0,0),(-1,-1), 5),
+        ])
+        level_rows = {'A++':1,'A+':2,'A':3,'B++':4,'B+':5,'B':6,'C':7}
+        for lv, ri in level_rows.items():
+            if lv in level_bg:
+                ref_ts.add('BACKGROUND', (0, ri), (-1, ri), level_bg[lv])
+        ref_table.setStyle(ref_ts)
+        story.append(ref_table)
+
+        story.append(Spacer(1, 0.3*cm))
+        story.append(Paragraph(
+            "※ 本報告以歷次段考在全校的 PR 值（百分等級）為基礎，"
+            "PR 值反映相對排名，不受各次考試難易度影響，是預測會考落點最穩定的指標。"
+            "實際會考結果仍依當年度全國考生表現為準，本報告僅供學習規劃參考。",
+            note_style))
+
+        doc.build(story)
+        return buf.getvalue()
+    except Exception as e:
+        return None
 
 
 # ==========================================
