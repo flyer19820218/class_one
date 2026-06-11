@@ -30,7 +30,7 @@ if 'user_id' not in st.session_state:
 if 'passwords' not in st.session_state:
     st.session_state.passwords = {}
 if 'teacher_class' not in st.session_state:
-    st.session_state.teacher_class = '01'
+    st.session_state.teacher_class = '801'  # 🌟 改為直覺的 3 碼班號
 
 # ==========================================
 # 區塊 2: 本地字體初始化
@@ -154,7 +154,7 @@ def generate_semester_average_excel(df_menu):
                 continue
             all_data.append({
                 '座號': int(seat_val),
-                '姓名': str(s_row.get('姓名', '')).strip(),
+                '姓名': str(s_row.get('姓名', '-')).strip() if pd.notna(s_row.get('姓名')) else "-",
                 '國文': s_row.get('國文', np.nan),
                 '英文': s_row.get('英文', np.nan),
                 '數學': s_row.get('數學', np.nan),
@@ -221,11 +221,12 @@ def pr_to_level(pr):
     elif pr >= 15: return "B"
     else: return "C"
 
+# 🌟 核心升級：支援 3 碼班級過濾，且姓名為空也絕對不遺漏資料的落點結算引擎
 def get_class_pr_data(df_menu, target_class):
     all_data = []
     exam_col, url_col = get_menu_cols(df_menu)
     has_class_col = '班級' in df_menu.columns
-    target_class = str(target_class).strip()
+    target_class = str(target_class).strip() # 例如 '708' 或 '801'
 
     for _, row in df_menu.iterrows():
         exam_name = str(row.get(exam_col, '')).strip()
@@ -234,7 +235,7 @@ def get_class_pr_data(df_menu, target_class):
 
         if has_class_col:
             row_class = str(row.get('班級', '')).strip()
-            if not (row_class.endswith(target_class) or row_class == target_class or target_class.endswith(row_class)):
+            if not (row_class == target_class or target_class.endswith(row_class)):
                 continue
 
         df_exam = load_data(file_url)
@@ -255,7 +256,7 @@ def get_class_pr_data(df_menu, target_class):
         else:
             df_stud['社會_融合'] = df_stud['社會']
 
-        # 全校 PR 計算
+        # 計算全校 PR 值
         for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
             col_pr = f'{sub}_PR'
             df_stud[col_pr] = np.nan
@@ -270,19 +271,19 @@ def get_class_pr_data(df_menu, target_class):
             seat_val = pd.to_numeric(s_row.get('座號'), errors='coerce')
             if pd.isna(seat_val): continue
 
+            # 🌟 核心修復：如果姓名為空（NaN），強制塞一條 "-" 避免被 Groupby 系統自動刪除
+            name_val = str(s_row.get('姓名', '-')).strip()
+            if name_val == 'nan' or not name_val:
+                name_val = "-"
+
             if is_5digit:
                 full_id_str = str(int(seat_val))
                 if len(full_id_str) < 4: continue
-                class_part = full_id_str[:-2]
-                seat_id = int(full_id_str[-2:])
+                class_part = full_id_str[:-2]  # 前三碼班級 (如 708)
+                seat_id = int(full_id_str[-2:]) # 後兩碼座號
                 
-                is_match = False
-                if class_part == target_class:
-                    is_match = True
-                elif len(class_part) >= 3 and class_part[-2:] == target_class.zfill(2):
-                    is_match = True
-                    
-                if not is_match: continue
+                # 🌟 精準比對 3 碼班號
+                if class_part != target_class: continue
                 student_key = full_id_str
             else:
                 seat_id = int(seat_val)
@@ -292,7 +293,7 @@ def get_class_pr_data(df_menu, target_class):
             all_data.append({
                 '學生識別碼': student_key,
                 '座號': seat_id,
-                '姓名': str(s_row.get('姓名', '')).strip(),
+                '姓名': name_val,
                 '國文PR': s_row.get('國文_PR', np.nan),
                 '英文PR': s_row.get('英文_PR', np.nan),
                 '數學PR': s_row.get('數學_PR', np.nan),
@@ -304,7 +305,8 @@ def get_class_pr_data(df_menu, target_class):
     if not all_data: return pd.DataFrame()
 
     df_all = pd.DataFrame(all_data)
-    df_mean = df_all.groupby(['學生識別碼', '座號', '姓名'])[
+    # 🌟 核心防護：確保 groupby 絕對不略過任何沒有名字的學生
+    df_mean = df_all.groupby(['學生識別碼', '座號', '姓名'], dropna=False)[
         ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']
     ].mean().reset_index()
 
@@ -401,7 +403,7 @@ def generate_pr_pdf(df_mean, class_name=""):
         story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#1a3a5c')))
         story.append(Spacer(1, 0.3*cm))
 
-        story.append(Paragraph("▌ 全班各科預估落點總表", head_style))
+        story.append(Paragraph("▌ 各科預估落點總表", head_style))
 
         pr_cols = ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']
         lv_cols = ['國文預估', '英文預估', '數學預估', '自然預估', '社會預估']
@@ -409,7 +411,7 @@ def generate_pr_pdf(df_mean, class_name=""):
         
         for _, r in df_mean.iterrows():
             def fmt_pr(v, lv): return f"{v:.0f}\n({lv})" if pd.notna(v) else "-"
-            row_data = [str(int(r['座號'])) if pd.notna(r['座號']) else '-', str(r.get('姓名', ''))]
+            row_data = [str(int(r['座號'])) if pd.notna(r['座號']) else '-', str(r.get('姓名', '-'))]
             for pr_c, lv_c in zip(pr_cols, lv_cols):
                 row_data.append(fmt_pr(r.get(pr_c), r.get(lv_c, '')))
             row_data.append(str(r.get('綜合預估', '-')))
@@ -598,9 +600,9 @@ with col_logout:
     role_name = "導師" if st.session_state.role == "teacher" else f"{'學生' if st.session_state.role == 'student' else '家長'} ({st.session_state.user_id})"
     st.info(f"👤 {role_name}")
     
-    # 🌟 導師專屬：全域切換班級
+    # 🌟 導師專屬：全域輸入精準 3 碼班號 (例如 708 或 801)
     if st.session_state.role == "teacher":
-        new_class = st.text_input("👨‍🏫 切換管理班級 (如 01 或 08)：", value=st.session_state.teacher_class)
+        new_class = st.text_input("👨‍🏫 切換管理班級 (請輸入 3 碼，如 708 或 801)：", value=st.session_state.teacher_class)
         if new_class != st.session_state.teacher_class:
             st.session_state.teacher_class = new_class
             st.rerun()
@@ -712,10 +714,10 @@ with tab1:
         df_students = df_students.sort_values(by='座號').reset_index(drop=True)
         all_student_seats = sorted(df_students[df_students['座號'] > 0]['座號'].tolist())
 
-        # 🌟 導師視角：根據上方切換的班級，自動過濾下拉選單！
         if st.session_state.role == "teacher":
-            target_class = st.session_state.teacher_class.strip()
-            student_seats = [s for s in all_student_seats if str(s)[:-2].endswith(target_class) or str(s)[:-2] == target_class]
+            target_class = st.session_state.teacher_class.strip() # 3 碼班號
+            # 精準比對前三碼為該班級
+            student_seats = [s for s in all_student_seats if str(s)[:-2] == target_class]
             if student_seats:
                 selected_seat = st.selectbox(f"🔢 請選擇座號 (目前鎖定 {target_class} 班)：", student_seats, key="student_seat")
             else:
@@ -727,7 +729,7 @@ with tab1:
 
         if selected_seat and selected_seat in student_seats:
             stud_data = df_students[df_students['座號'] == selected_seat].iloc[0]
-            st.markdown(f"### 👤 座號 {selected_seat} 號 【{stud_data.get('姓名', '')}】 的成績報告")
+            st.markdown(f"### 👤 座號 {selected_seat} 號 【{stud_data.get('姓名', '-')}】 的成績報告")
 
             col1, col2 = st.columns([1.1, 1.0])
             with col1:
@@ -739,7 +741,7 @@ with tab1:
                         avg = float(stat.get('平均', 0)) if pd.notna(stat.get('平均')) else 0.0
                         high = float(stat.get('高標', 0)) if pd.notna(stat.get('高標')) else 0.0
                         indent = "  └ " if s in ['歷史', '地理', '公民'] else "  "
-                        st.text(f"{indent}{s}：{score:.2f}  (校均: {avg:.2f} | 高標: {high:.2f})")
+                        st.text(f"{indent}{s}：{score:.2f}  (全校平均: {avg:.2f} | 高標: {high:.2f})")
 
                 st.markdown("---")
                 total_score = float(stud_data.get('總分_calc', 0) or 0)
@@ -810,7 +812,7 @@ with tab2:
 
 with tab3:
     st.markdown("### 🎯 國中教育會考 ─ PR 落點對照標準")
-    st.info("平時段考分數會因為難易度而起伏，但 **PR 值 (百分等級)** 代表你在全校的相對排名位置，是預測會考落點最精準的數字！")
+    st.info("平時段考分數會因為難易度而起喚，但 **PR 值 (百分等級)** 代表你在全校的相對排名位置，是預測會考落點最精準的數字！")
 
     col_t1, col_t2, col_t3 = st.columns(3)
     with col_t1:
