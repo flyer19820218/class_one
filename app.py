@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import io
+import re
 from matplotlib import font_manager
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, Border, Side
@@ -20,7 +21,7 @@ if 'role' not in st.session_state:
 if 'user_id' not in st.session_state:
     st.session_state.user_id = None
 if 'passwords' not in st.session_state:
-    st.session_state.passwords = {} # 暫存學生與家長更改的密碼
+    st.session_state.passwords = {}
 
 # ==========================================
 # 區塊 2: 本地字體初始化
@@ -38,7 +39,6 @@ else:
 def get_google_sheet_csv_url(url):
     try:
         if "export?format=csv" in url: return url
-        import re
         match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
         if match:
             gid_match = re.search(r'gid=([0-9]+)', url)
@@ -62,8 +62,32 @@ def check_is_grade_2_or_3(exam_name):
         return True
     return False
 
+# 🌟 核心防彈機制：智慧辨識並清洗任何格式的校排原始檔
+def load_and_standardize_csv(url):
+    df = load_data(url)
+    if df is None or df.empty: return None
+    df = df.copy()
+    
+    # 自動尋找包含 5 位數學生代號 (7xxxx 或 8xxxx 或 9xxxx) 的欄位
+    id_col = None
+    for col in df.columns:
+        vals = pd.to_numeric(df[col], errors='coerce')
+        if vals.notna().any():
+            if ((vals >= 70000) & (vals <= 99999)).any():
+                id_col = col; break
+    if id_col is None: id_col = df.columns[0]
+        
+    df['__id_num'] = pd.to_numeric(df[id_col], errors='coerce')
+    # 僅篩選出真正的 5 位數學生代號，排除標題與底部平均行
+    df = df[df['__id_num'].notna() & (df['__id_num'] >= 70000) & (df['__id_num'] <= 99999)].copy()
+    df['座號'] = df['__id_num'].astype(int)
+    
+    df.columns = df.columns.str.strip()
+    if '英語' in df.columns: df = df.rename(columns={'英語': '英文'})
+    return df
+
 # ==========================================
-# 區塊 3: 導師專屬 ─ 跨學期全班總平均 Excel 產生器
+# 區塊 3: 導師功能 (全校總平均)
 # ==========================================
 def generate_semester_average_excel(df_menu):
     all_data = []
@@ -72,111 +96,179 @@ def generate_semester_average_excel(df_menu):
         exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
         file_url = str(row['該次成績單的 Google 試算表網址']).strip()
         
-        df_exam = load_data(file_url)
+        df_exam = load_and_standardize_csv(file_url)
         if df_exam is not None:
-            if '座號' not in df_exam.columns:
-                continue
-                
-            df_exam['_is_student'] = pd.to_numeric(df_exam['座號'], errors='coerce').notna()
-            df_stud = df_exam[df_exam['_is_student']].copy()
-            
             is_grade_2_3 = check_is_grade_2_or_3(exam_name)
             
-            for _, s_row in df_stud.iterrows():
-                seat = int(pd.to_numeric(s_row.get('座號'), errors='coerce'))
-                name = str(s_row.get('姓名', '')).strip()
-                
-                # 絕對安全寫法：使用 .get() 容錯，若缺考或無此學科欄位則自動帶入 NaN
+            for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
+                if col not in df_exam.columns: df_exam[col] = np.nan
+            
+            for _, s_row in df_exam.iterrows():
                 record = {
-                    '座號': seat,
-                    '姓名': name,
-                    '國文': pd.to_numeric(s_row.get('國文', np.nan), errors='coerce'),
-                    '英文': pd.to_numeric(s_row.get('英文', np.nan), errors='coerce'),
-                    '數學': pd.to_numeric(s_row.get('數學', np.nan), errors='coerce'),
-                    '自然': pd.to_numeric(s_row.get('自然', np.nan), errors='coerce')
+                    '座號': int(s_row['座號']), # 這裡的座號是 5 位數班級代碼 (如 70101)
+                    '姓名': str(s_row.get('姓名', '')).strip(),
+                    '國文': pd.to_numeric(s_row['國文'], errors='coerce'),
+                    '英文': pd.to_numeric(s_row['英文'], errors='coerce'),
+                    '數學': pd.to_numeric(s_row['數學'], errors='coerce'),
+                    '自然': pd.to_numeric(s_row['自然'], errors='coerce')
                 }
                 
                 if is_grade_2_3:
-                    his = pd.to_numeric(s_row.get('歷史', np.nan), errors='coerce')
-                    geo = pd.to_numeric(s_row.get('地理', np.nan), errors='coerce')
-                    civ = pd.to_numeric(s_row.get('公民', np.nan), errors='coerce')
-                    record['歷史'] = his
-                    record['地理'] = geo
-                    record['公民'] = civ
+                    his = pd.to_numeric(s_row['歷史'], errors='coerce')
+                    geo = pd.to_numeric(s_row['地理'], errors='coerce')
+                    civ = pd.to_numeric(s_row['公民'], errors='coerce')
+                    record['歷史'] = his; record['地理'] = geo; record['公民'] = civ
                     if pd.notna(his) and pd.notna(geo) and pd.notna(civ):
                         record['社會_融合'] = (his + geo + civ) / 3
                     else:
                         record['社會_融合'] = np.nan
                 else:
-                    soc = pd.to_numeric(s_row.get('社會', np.nan), errors='coerce')
-                    record['社會_融合'] = soc
-                    record['歷史'] = soc
-                    record['地理'] = soc
-                    record['公民'] = soc
+                    soc = pd.to_numeric(s_row['社會'], errors='coerce')
+                    record['社會_融合'] = soc; record['歷史'] = soc; record['地理'] = soc; record['公民'] = soc
                     
                 all_data.append(record)
                 
-    if not all_data:
-        return None
+    if not all_data: return None
         
     df_all = pd.DataFrame(all_data)
-    
-    # 進行全班分組平均計算
     df_mean = df_all.groupby(['座號', '姓名']).mean(numeric_only=True).reset_index()
     
-    # 確保所有必備欄位均存在於結果中
     for col in ['國文', '英文', '數學', '自然', '社會_融合', '歷史', '地理', '公民']:
-        if col not in df_mean.columns:
-            df_mean[col] = np.nan
+        if col not in df_mean.columns: df_mean[col] = np.nan
             
-    # 計算會考標準五科總和平均
     df_mean['五科總平均'] = (df_mean['國文'].fillna(0) + df_mean['英文'].fillna(0) + 
                           df_mean['數學'].fillna(0) + df_mean['自然'].fillna(0) + 
                           df_mean['社會_融合'].fillna(0)) / 5
-                          
     mask_all_na = df_mean[['國文', '英文', '數學', '自然', '社會_融合']].isna().all(axis=1)
     df_mean.loc[mask_all_na, '五科總平均'] = np.nan
-    
     df_mean = df_mean.sort_values('座號')
     
-    # 產出 Excel 結構
     wb = Workbook()
     ws = wb.active
-    ws.title = "全班學期總平均"
+    ws.title = "全校學期總平均"
     
-    headers = ["座號", "姓名", "國文平均", "英文平均", "數學平均", "自然平均", "社會(融合)平均", "歷史平均", "地理平均", "公民平均", "五科總和平均"]
+    headers = ["班級座號(學號)", "姓名", "國文平均", "英文平均", "數學平均", "自然平均", "社會(融合)平均", "歷史平均", "地理平均", "公民平均", "五科總和平均"]
     ws.append(headers)
     
     for _, r in df_mean.iterrows():
         row_data = [
             r['座號'], r['姓名'],
-            round(r['國文'], 2) if pd.notna(r['國文']) else "",
-            round(r['英文'], 2) if pd.notna(r['英文']) else "",
-            round(r['數學'], 2) if pd.notna(r['數學']) else "",
-            round(r['自然'], 2) if pd.notna(r['自然']) else "",
-            round(r['社會_融合'], 2) if pd.notna(r['社會_融合']) else "",
-            round(r['歷史'], 2) if pd.notna(r['歷史']) else "",
-            round(r['地理'], 2) if pd.notna(r['地理']) else "",
-            round(r['公民'], 2) if pd.notna(r['公民']) else "",
+            round(r['國文'], 2) if pd.notna(r['國文']) else "", round(r['英文'], 2) if pd.notna(r['英文']) else "",
+            round(r['數學'], 2) if pd.notna(r['數學']) else "", round(r['自然'], 2) if pd.notna(r['自然']) else "",
+            round(r['社會_融合'], 2) if pd.notna(r['社會_融合']) else "", round(r['歷史'], 2) if pd.notna(r['歷史']) else "",
+            round(r['地理'], 2) if pd.notna(r['地理']) else "", round(r['公民'], 2) if pd.notna(r['公民']) else "",
             round(r['五科總平均'], 2) if pd.notna(r['五科總平均']) else ""
         ]
         ws.append(row_data)
         
-    # 設定框線與格式
     thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=11):
         for cell in row:
             cell.border = thin_border
             cell.alignment = Alignment(horizontal="center", vertical="center")
-            if cell.row == 1:
-                cell.font = Font(bold=True)
+            if cell.row == 1: cell.font = Font(bold=True)
                 
-    for col in ws.columns:
-        ws.column_dimensions[col[0].column_letter].width = 12
-                
+    for col in ws.columns: ws.column_dimensions[col[0].column_letter].width = 14
     out = io.BytesIO()
     wb.save(out)
     return out.getvalue()
+
+def pr_to_level(pr):
+    if pd.isna(pr): return ""
+    if pr >= 91: return "A++"
+    elif pr >= 85: return "A+"
+    elif pr >= 75: return "A"
+    elif pr >= 60: return "B++"
+    elif pr >= 45: return "B+"
+    elif pr >= 15: return "B"
+    else: return "C"
+
+# 🌟 精準班級會考落點結算引擎 (純文字字串辨識版)
+def generate_pr_report_excel(df_menu, target_class_code):
+    all_data = []
+    
+    for _, row in df_menu.iterrows():
+        exam_name = str(row.get('考試檔案名稱或別名', row.get('考試名稱', ''))).strip()
+        file_url = str(row['該次成績單的 Google 試算表網址']).strip()
+        
+        df_exam = load_and_standardize_csv(file_url)
+        if df_exam is not None:
+            is_grade_2_3 = check_is_grade_2_or_3(exam_name)
+            
+            for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
+                if col not in df_exam.columns: df_exam[col] = np.nan
+                else: df_exam[col] = pd.to_numeric(df_exam[col], errors='coerce')
+                
+            if is_grade_2_3:
+                df_exam['社會_融合'] = df_exam[['歷史', '地理', '公民']].mean(axis=1).fillna(df_exam['社會'])
+            else:
+                df_exam['社會_融合'] = df_exam['社會']
+                
+            # 依據單次段考的全校真正學生計算精準全校 PR 值
+            for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
+                df_exam[f'{sub}_PR'] = df_exam[sub].rank(pct=True) * 100
+                
+            for _, s_row in df_exam.iterrows():
+                full_id_str = str(int(s_row['座號'])) # 這裡是 5 位數 (如 '70101')
+                if len(full_id_str) >= 4:
+                    # 前面是班號 (如 701)，後面兩碼是座號 (如 01)
+                    class_id = full_id_str[:-2]
+                    seat_id = int(full_id_str[-2:])
+                    
+                    # 比對老師輸入的目標班級 (例如輸入 01，則 701, 801 皆吻合)
+                    if class_id.endswith(target_class_code) or class_id == target_class_code:
+                        all_data.append({
+                            '學號': full_id_str,
+                            '座號': seat_id,
+                            '姓名': str(s_row.get('姓名', '')).strip(),
+                            '國文PR': s_row.get('國文_PR', np.nan),
+                            '英文PR': s_row.get('英文_PR', np.nan),
+                            '數學PR': s_row.get('數學_PR', np.nan),
+                            '自然PR': s_row.get('自然_PR', np.nan),
+                            '社會PR': s_row.get('社會_融合_PR', np.nan)
+                        })
+
+    if not all_data: return None, None
+    
+    df_all = pd.DataFrame(all_data)
+    df_mean = df_all.groupby(['學號', '座號', '姓名']).mean(numeric_only=True).reset_index()
+    df_mean['五科總PR平均'] = df_mean[['國文PR', '英文PR', '數學PR', '自然PR', '社會PR']].mean(axis=1)
+    
+    for col in ['國文PR', '英文PR', '數學PR', '自然PR', '社會PR', '五科總PR平均']:
+        df_mean[f'{col.replace("PR", "").replace("平均", "")}預估等級'] = df_mean[col].apply(pr_to_level)
+        
+    df_mean = df_mean.sort_values('學號')
+    
+    wb = Workbook()
+    ws = wb.active
+    ws.title = f"會考預估落點"
+    
+    headers = ["班級座號(學號)", "姓名", "國文PR", "國文預估", "英文PR", "英文預估", "數學PR", "數學預估", "自然PR", "自然預估", "社會PR", "社會預估", "五科平均PR", "綜合預估等級"]
+    ws.append(headers)
+    
+    for _, r in df_mean.iterrows():
+        ws.append([
+            r['學號'], r['姓名'],
+            round(r['國文PR'], 2) if pd.notna(r['國文PR']) else "", r.get('國文預估等級', ''),
+            round(r['英文PR'], 2) if pd.notna(r['英文PR']) else "", r.get('英文預估等級', ''),
+            round(r['數學PR'], 2) if pd.notna(r['數學PR']) else "", r.get('數學預估等級', ''),
+            round(r['自然PR'], 2) if pd.notna(r['自然PR']) else "", r.get('自然預估等級', ''),
+            round(r['社會PR'], 2) if pd.notna(r['社會PR']) else "", r.get('社會預估等級', ''),
+            round(r['五科總PR平均'], 2) if pd.notna(r['五科總PR平均']) else "", r.get('五科總預估等級', '')
+        ])
+        
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=14):
+        for cell in row:
+            cell.border = thin_border
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            if cell.row == 1: cell.font = Font(bold=True)
+            
+    for col in ws.columns: ws.column_dimensions[col[0].column_letter].width = 13
+    
+    out = io.BytesIO()
+    wb.save(out)
+    return df_mean, out.getvalue()
 
 # ==========================================
 # 區塊 4: 雷達圖產生器 & 歷史數據撈取
@@ -215,43 +307,35 @@ def fetch_student_history(df_menu, seat_num):
         exam_name = str(row['考試檔案名稱或別名'] if '考試檔案名稱或別名' in df_menu.columns else row['考試名稱']).strip()
         file_url = str(row['該次成績單的 Google 試算表網址']).strip()
         
-        df_exam = load_data(file_url)
+        df_exam = load_and_standardize_csv(file_url)
         if df_exam is not None:
-            df_exam['_is_student'] = pd.to_numeric(df_exam['座號'], errors='coerce').notna()
-            df_stud = df_exam[df_exam['_is_student']].copy()
-            df_stud['座號'] = df_stud['座號'].astype(int)
-            
             is_grade_2_3 = check_is_grade_2_or_3(exam_name)
             
             for col in ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']:
-                if col not in df_stud.columns: df_stud[col] = 0
-                df_stud[col] = pd.to_numeric(df_stud[col], errors='coerce').fillna(0)
+                if col not in df_exam.columns: df_exam[col] = np.nan
+                df_exam[col] = pd.to_numeric(df_exam[col], errors='coerce')
             
             if is_grade_2_3:
-                df_stud['社會_融合'] = (df_stud['歷史'] + df_stud['地理'] + df_stud['公民']) / 3
+                df_exam['社會_融合'] = df_exam[['歷史', '地理', '公民']].mean(axis=1).fillna(df_exam['社會'])
             else:
-                df_stud['社會_融合'] = df_stud['社會']
+                df_exam['社會_融合'] = df_exam['社會']
             
             for sub in ['國文', '英文', '數學', '自然', '社會_融合']:
-                df_stud[f'{sub}_PR'] = df_stud[sub].rank(pct=True) * 100
+                df_exam[f'{sub}_PR'] = df_exam[sub].rank(pct=True) * 100
             
-            if '總分' not in df_stud.columns:
-                df_stud['總分'] = df_stud['國文'] + df_stud['英文'] + df_stud['數學'] + df_stud['自然'] + df_stud['社會_融合']
-            df_stud['總分'] = pd.to_numeric(df_stud['總分'], errors='coerce').fillna(0)
+            df_exam['總分'] = df_exam[['國文', '英文', '數學', '自然', '社會_融合']].sum(axis=1, skipna=True)
+            df_exam['名次'] = df_exam['總分'].rank(ascending=False, method='min')
             
-            if '名次' not in df_stud.columns:
-                df_stud['名次'] = df_stud['總分'].rank(ascending=False, method='min')
-            
-            match = df_stud[df_stud['座號'] == seat_num]
+            match = df_exam[df_exam['座號'] == seat_num]
             if not match.empty:
                 s_row = match.iloc[0]
                 history_records.append({
                     "考試名稱": exam_name,
-                    "國文": s_row['國文_PR'],
-                    "英文": s_row['英文_PR'],
-                    "數學": s_row['數學_PR'],
-                    "自然": s_row['自然_PR'],
-                    "社會(含領域融合)": s_row['社會_融合_PR'],
+                    "國文": s_row.get('國文_PR', np.nan),
+                    "英文": s_row.get('英文_PR', np.nan),
+                    "數學": s_row.get('數學_PR', np.nan),
+                    "自然": s_row.get('自然_PR', np.nan),
+                    "社會(含領域融合)": s_row.get('社會_融合_PR', np.nan),
                     "總分": pd.to_numeric(s_row.get('總分', 0)),
                     "名次": pd.to_numeric(s_row.get('名次', 0))
                 })
@@ -270,7 +354,7 @@ if not st.session_state.logged_in:
     if login_role == "導師":
         username = st.text_input("導師帳號：")
     else:
-        username = st.text_input("請輸入座號：")
+        username = st.text_input("請輸入班級座號 (5位數，例如 70101)：")
         
     password = st.text_input("請輸入密碼 (學生/家長預設密碼為座號)：", type="password")
     
@@ -297,7 +381,7 @@ if not st.session_state.logged_in:
                 else:
                     st.error("❌ 密碼錯誤！")
             except ValueError:
-                st.error("❌ 學生或家長帳號請輸入純數字座號！")
+                st.error("❌ 學生或家長帳號請輸入 5 位數純數字！")
     st.stop()
 
 # ==========================================
@@ -307,7 +391,7 @@ col_title, col_logout = st.columns([0.8, 0.2])
 with col_title:
     st.title("🎓 801 專屬成績大數據主控台")
 with col_logout:
-    role_name = "導師" if st.session_state.role == "teacher" else f"{'學生' if st.session_state.role == 'student' else '家長'} ({st.session_state.user_id}號)"
+    role_name = "導師" if st.session_state.role == "teacher" else f"{'學生' if st.session_state.role == 'student' else '家長'} ({st.session_state.user_id})"
     st.info(f"👤 {role_name}")
     if st.button("登出"):
         st.session_state.logged_in = False
@@ -333,19 +417,18 @@ MASTER_MENU_URL = "https://docs.google.com/spreadsheets/d/1FL-orK8H_oDrLuDg1pAij
 df_menu = load_data(MASTER_MENU_URL)
 
 if df_menu is not None:
-    # 🌟 導師專屬：全班總平均結算區塊
     if st.session_state.role == "teacher":
-        with st.expander("📊 導師專屬功能：匯出全班學期各科總平均 Excel", expanded=True):
-            st.write("點擊下方按鈕，系統將自動讀取主控台內的所有段考成績，計算全班每位學生的「各科跨學期平均」與「五科總平均」。")
-            if st.button("🚀 結算並匯出全班總表", type="primary"):
+        with st.expander("📊 導師專屬：匯出所有學生學期各科總平均 Excel", expanded=False):
+            st.write("系統將自動讀取主控台內的所有段考成績，計算全校每位學生的「各科跨學期平均」與「五科總平均」。")
+            if st.button("🚀 結算並匯出全校總表", type="primary"):
                 with st.spinner("正在結算各次段考數據中，請稍候..."):
                     excel_data = generate_semester_average_excel(df_menu)
                     if excel_data:
-                        st.success("✅ 全班學期總平均計算完成！")
+                        st.success("✅ 學期總平均計算完成！")
                         st.download_button(
-                            label="📥 點我下載【全班各科總平均 Excel】",
+                            label="📥 下載【全校學期總平均 Excel】",
                             data=excel_data,
-                            file_name="801_全班學期各科總平均.xlsx",
+                            file_name="全校學期總平均總表.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
                     else:
@@ -357,7 +440,7 @@ if df_menu is not None:
     else:
         exam_options = df_menu['考試名稱'].dropna().tolist()
     
-    tab1, tab2 = st.tabs(["🔍 單次段考詳細成績", "📈 歷史軌跡動態分析"])
+    tab1, tab2, tab3 = st.tabs(["🔍 單次段考詳細成績", "📈 歷史軌跡動態分析", "🎯 會考落點預估 (PR分析)"])
     
     with tab1:
         selected_exam = st.selectbox("📅 請選擇要查看的考試項目：", exam_options, key="student_exam")
@@ -367,19 +450,29 @@ if df_menu is not None:
             target_sheet_url = df_menu[df_menu['考試名稱'] == selected_exam]['該次成績單的 Google 試算表網址'].values[0]
             
         has_7_subjects = check_is_grade_2_or_3(selected_exam)
-        
         raw_df = load_data(target_sheet_url)
+        
         if raw_df is not None:
-            raw_df['_is_student'] = pd.to_numeric(raw_df['座號'], errors='coerce').notna()
-            df_students = raw_df[raw_df['_is_student']].copy()
-            df_students['座號'] = df_students['座號'].astype(int)
+            raw_df.columns = raw_df.columns.str.strip()
+            if '英語' in raw_df.columns: raw_df = raw_df.rename(columns={'英語': '英文'})
+                
+            id_col = None
+            for col in raw_df.columns:
+                vals = pd.to_numeric(raw_df[col], errors='coerce')
+                if vals.notna().any() and ((vals >= 70000) & (vals <= 99999)).any():
+                    id_col = col; break
+            if id_col is None: id_col = raw_df.columns[0]
+                
+            raw_df['__id_num'] = pd.to_numeric(raw_df[id_col], errors='coerce')
             
-            df_bottom = raw_df[~raw_df['_is_student']].copy()
+            df_students = raw_df[raw_df['__id_num'].notna() & (raw_df['__id_num'] >= 70000) & (raw_df['__id_num'] <= 99999)].copy()
+            df_students['座號'] = df_students['__id_num'].astype(int)
+            df_bottom = raw_df[raw_df['__id_num'].isna() | (raw_df['__id_num'] < 70000) | (raw_df['__id_num'] > 99999)].copy()
             
             stats_dict = {}
             cols_to_extract = ['國文', '英文', '數學', '自然', '社會', '歷史', '地理', '公民']
             for _, row in df_bottom.iterrows():
-                name = str(row['座號']).strip() if pd.notna(row['座號']) else str(row['姓名']).strip()
+                name = str(row.get('座號', row.get('班級座號', ''))).strip() if pd.notna(row.get('座號')) else str(row.get('姓名', '')).strip()
                 if '高標' in name:
                     for c in cols_to_extract:
                         if c in row:
@@ -399,25 +492,23 @@ if df_menu is not None:
                 radar_subs = ['國文', '英文', '數學', '自然', '社會']
             
             for col in cols_to_extract:
-                if col not in df_students.columns: df_students[col] = 0
+                if col not in df_students.columns: df_students[col] = np.nan
             
-            if '總分' not in df_students.columns:
-                if has_7_subjects:
-                    df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + \
-                                          (pd.to_numeric(df_students['歷史'], errors='coerce').fillna(0) + \
-                                           pd.to_numeric(df_students['地理'], errors='coerce').fillna(0) + \
-                                           pd.to_numeric(df_students['公民'], errors='coerce').fillna(0)) / 3
-                else:
-                    df_students['總分'] = pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + \
-                                          pd.to_numeric(df_students['社會'], errors='coerce').fillna(0)
+            if has_7_subjects:
+                df_students['總分'] = (pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + 
+                                      (pd.to_numeric(df_students['歷史'], errors='coerce').fillna(0) + 
+                                       pd.to_numeric(df_students['地理'], errors='coerce').fillna(0) + 
+                                       pd.to_numeric(df_students['公民'], errors='coerce').fillna(0)) / 3)
+            else:
+                df_students['總分'] = (pd.to_numeric(df_students['國文'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['英文'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['數學'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['自然'], errors='coerce').fillna(0) + 
+                                      pd.to_numeric(df_students['社會'], errors='coerce').fillna(0))
             
-            df_students['總分'] = pd.to_numeric(df_students['總分'], errors='coerce').fillna(0)
             df_students['總PR'] = df_students['總分'].rank(pct=True) * 100
             
             if '名次' in df_students.columns:
@@ -433,21 +524,20 @@ if df_menu is not None:
             student_seats = sorted(df_students[df_students['座號'] > 0]['座號'].tolist())
             
             if st.session_state.role == "teacher":
-                selected_seat = st.selectbox("🔢 請選擇要查詢的座號：", student_seats, key="student_seat")
+                selected_seat = st.selectbox("🔢 請選擇要查詢的座號 (5位數，例如 70101)：", student_seats, key="student_seat")
             else:
                 selected_seat = st.session_state.user_id
             
             if selected_seat in student_seats:
                 stud_data = df_students[df_students['座號'] == selected_seat].iloc[0]
-                st.markdown(f"### 👤 座號 {selected_seat} 號 【{stud_data['姓名']}】 的成績報告")
+                st.markdown(f"### 👤 座號 {selected_seat} 號 【{stud_data.get('姓名', '')}】 的成績報告")
                 
                 col1, col2 = st.columns([1.1, 1.0])
-                
                 with col1:
                     st.write("**📊 各科成績明細：**")
                     for s in display_subs:
-                        if s in stud_data:
-                            score = float(stud_data[s]) if pd.notna(stud_data[s]) else 0.0
+                        if s in stud_data and pd.notna(stud_data[s]):
+                            score = float(stud_data[s])
                             stat = stats_dict.get(s, {})
                             avg = float(stat.get('平均', 0)) if pd.notna(stat.get('平均')) else 0.0
                             high = float(stat.get('高標', 0)) if pd.notna(stat.get('高標')) else 0.0
@@ -463,7 +553,7 @@ if df_menu is not None:
                     total_pr = float(stud_data['總PR'])
                     
                     st.metric(label="五科總分", value=f"{total_score:.2f}")
-                    st.write(f"🏆 **班級名次**：第 {rank} 名")
+                    st.write(f"🏆 **排名**：第 {rank} 名")
                     st.write(f"📈 **總分 PR 值**：{total_pr:.2f}")
                     
                 with col2:
@@ -472,12 +562,14 @@ if df_menu is not None:
                     st.pyplot(fig)
             else:
                 st.warning("⚠️ 此次考試中查無此座號成績資料。")
+        else:
+            st.warning("無法載入此考試資料。")
 
     with tab2:
         st.markdown("### 📊 學生歷史跨學期趨勢追蹤")
         if 'student_seats' in locals() and student_seats:
             if st.session_state.role == "teacher":
-                analysis_seat = st.selectbox("🔢 請選擇要分析的學生座號：", student_seats, key="analysis_seat")
+                analysis_seat = st.selectbox("🔢 請選擇要分析的學生座號 (5位數)：", student_seats, key="analysis_seat")
             else:
                 analysis_seat = st.session_state.user_id
             
@@ -493,7 +585,8 @@ if df_menu is not None:
                     sub_cols = ["國文", "英文", "數學", "自然", "社會(含領域融合)"]
                     
                     for sub in sub_cols:
-                        ax_score.plot(df_history["考試名稱"], df_history[sub], marker='o', linewidth=2, label=f"{sub} PR")
+                        if sub in df_history.columns:
+                            ax_score.plot(df_history["考試名稱"], df_history[sub], marker='o', linewidth=2, label=f"{sub} PR")
                     
                     ax_score.set_title("各科 PR 值走勢圖 (跨學期真實能力追蹤)", fontsize=14, fontweight='bold')
                     ax_score.set_ylabel("PR 值 (越大表現越優異)", fontsize=12)
@@ -504,24 +597,76 @@ if df_menu is not None:
                     st.pyplot(fig_score)
                     
                     fig_rank, ax_rank = plt.subplots(figsize=(8, 3.5))
-                    ax_rank.plot(df_history["考試名稱"], df_history["名次"], marker='s', color='#E67E22', linewidth=2.5, label="班級名次")
-                    
-                    ax_rank.set_title("個人班級名次晉升軌跡 (曲線往上代表進步)", fontsize=14, fontweight='bold')
-                    ax_rank.set_ylabel("名次", fontsize=12)
-                    ax_rank.grid(True, linestyle=':', alpha=0.6)
-                    ax_rank.invert_yaxis() 
-                    
-                    max_rank = int(df_history["名次"].max()) + 3
-                    ax_rank.set_ylim(max_rank, 1)
-                    
-                    plt.xticks(rotation=15)
-                    st.pyplot(fig_rank)
+                    if "名次" in df_history.columns:
+                        ax_rank.plot(df_history["考試名稱"], df_history["名次"], marker='s', color='#E67E22', linewidth=2.5, label="個人排名")
+                        ax_rank.set_title("名次晉升軌跡 (曲線往上代表進步)", fontsize=14, fontweight='bold')
+                        ax_rank.set_ylabel("名次", fontsize=12)
+                        ax_rank.grid(True, linestyle=':', alpha=0.6)
+                        ax_rank.invert_yaxis() 
+                        max_rank = int(df_history["名次"].max()) + 3
+                        ax_rank.set_ylim(max_rank, 1)
+                        plt.xticks(rotation=15)
+                        st.pyplot(fig_rank)
                     
                     with st.expander("👀 檢視完整歷史數據清單"):
                         st.dataframe(df_history)
                 else:
                     st.warning("找不到該位同學的歷史紀錄。")
-            else:
-                st.warning("⚠️ 查無此座號成績資料。")
+
+    with tab3:
+        st.markdown("### 🎯 國中教育會考 ─ PR 落點對照標準")
+        st.info("平時段考分數會因為難易度而起伏，但 **PR 值 (百分等級)** 代表你在全校的相對排名位置，是預測會考落點最精準的數字！")
+        
+        col_table1, col_table2, col_table3 = st.columns(3)
+        with col_table1:
+            st.success("**🏆 A 級 (精熟)**\n\n**A++**：PR 91 ～ 99\n**A+**：PR 85 ～ 90\n**A**：PR 75 ～ 84\n\n*(目標拿 A 者，各科請維持 PR 75 以上)*")
+        with col_table2:
+            st.warning("**💪 B 級 (基礎)**\n\n**B++**：PR 60 ～ 74\n**B+**：PR 45 ～ 59\n**B**：PR 15 ～ 44\n\n*(多數同學落點，拚進步的關鍵)*")
+        with col_table3:
+            st.error("**⚠️ C 級 (待加強)**\n\n**C**：PR 14 以下\n\n*(基礎觀念需要重新補強)*")
+
+        st.markdown("---")
+
+        if st.session_state.role == "teacher":
+            st.markdown("#### 👨‍🏫 導師專屬：班級會考預估落點總表結算")
+            target_class = st.text_input("請輸入欲查詢的班級代碼 (輸入 01 可抓取所有 1 班；輸入 701 僅抓取 701 班)：", value="01")
+            
+            if st.button("🚀 結算該班會考預估落點 (跨學期 PR 平均)", type="primary"):
+                with st.spinner(f"正在全校資料庫中撈取 {target_class} 班學生，計算會考等級..."):
+                    df_pr, excel_pr = generate_pr_report_excel(df_menu, target_class)
+                    if df_pr is not None and not df_pr.empty:
+                        st.success(f"✅ 成功結算符合 {target_class} 班共 {len(df_pr)} 位學生的落點！")
+                        st.download_button(
+                            label=f"📥 下載【{target_class}班會考預估落點 Excel】",
+                            data=excel_pr,
+                            file_name=f"班級{target_class}_會考預估落點總表.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                        st.dataframe(df_pr)
+                    else:
+                        st.error(f"❌ 找不到包含代碼 '{target_class}' 的班級資料。")
+        else:
+            st.markdown("#### 🎯 你的個人專屬預估落點")
+            if st.button("🚀 分析我的會考落點", type="primary"):
+                if 'student_seats' in locals() and st.session_state.user_id in student_seats:
+                    df_history = fetch_student_history(df_menu, st.session_state.user_id)
+                    if not df_history.empty:
+                        my_pr = {
+                            "國文": df_history["國文"].mean(), "英文": df_history["英文"].mean(),
+                            "數學": df_history["數學"].mean(), "自然": df_history["自然"].mean(),
+                            "社會": df_history["社會(含領域融合)"].mean() if "社會(含領域融合)" in df_history.columns else np.nan
+                        }
+                        
+                        st.write("根據你歷次段考的 PR 值平均，為你預估的會考落點如下：")
+                        cols = st.columns(5)
+                        for i, (sub, pr) in enumerate(my_pr.items()):
+                            if pd.notna(pr):
+                                cols[i].metric(label=f"{sub} (平均 PR: {pr:.1f})", value=pr_to_level(pr))
+                        
+                        total_pr = pd.Series(list(my_pr.values())).mean()
+                        if pd.notna(total_pr):
+                            st.info(f"✨ **你的五科綜合預估落點：{pr_to_level(total_pr)}** (總平均 PR: {total_pr:.1f})")
+                    else:
+                        st.warning("目前還沒有足夠的歷史資料來為你進行分析喔！")
 else:
     st.error("❌ 無法載入您的主控總表，請確認網址權限設定。")
